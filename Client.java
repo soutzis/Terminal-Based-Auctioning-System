@@ -3,8 +3,6 @@ import java.net.MalformedURLException;
 import java.rmi.Naming;
 import java.rmi.NotBoundException;
 import java.rmi.RemoteException;
-import java.util.Scanner;
-import java.util.UUID;
 import java.util.regex.Pattern;
 
 /**
@@ -13,17 +11,15 @@ import java.util.regex.Pattern;
  */
 public abstract class Client implements Serializable {
 
-    public static final String REMOTE_ERROR = "\nSomething went wrong when contacting the server. Please try again!";
+    public static final String REMOTE_ERROR = "\nSomething went wrong when contacting the server!";
 
-    private String uid;
-    private String name;
-    private String email;
+    private String uid, name, email;
     private boolean serverAlive = false;
 
     protected ServerInterface serverReference;
     protected final boolean DEBUG = false;  /*For debugging purposes of classes that inherit from Client*/
 
-    private final String MALFORMEDURL_ERROR = "Please check if the URL of the server is valid and try again.";
+    private final String MALFORMED_URL_ERROR = "Please check if the URL of the server is valid and try again.";
     private final String NOT_BOUND_ERROR = "It appears that the server name you provided can't be found." +
             "\nVerify that the server name is correct and try again.";
     private final String REMOTE_ERROR_TROUBLESHOOT = "Please make sure that your Client program's source code " +
@@ -46,13 +42,18 @@ public abstract class Client implements Serializable {
      * @param email The email of the Client.
      */
     protected Client(String name, String email){
-        this.uid = UUID.randomUUID().toString();
+        this.uid = null;
         this.name = name;
         this.email = email;
+        this.serverAlive = true;
         try {
             serverReference = (ServerInterface)Naming.lookup("rmi://localhost/AuctionSystem");
-            serverAlive = true;
-            System.out.println("\n--->"+serverReference.registerClient(this)+"<---");
+            ServerRegistrationReply reply = serverReference.registerClient(this);
+            System.out.println("Server >> "+reply.getMsg()+"\n<< Server");
+            if(reply.isSuccessful()){
+                this.uid = reply.getUid();
+                System.out.println("--->Your unique ID is: "+this.uid+"<---");
+            }
         }
         catch (NotBoundException nbe) {
             System.out.println(NOT_BOUND_ERROR);
@@ -61,14 +62,16 @@ public abstract class Client implements Serializable {
             }
         }
         catch (MalformedURLException murle) {
-            System.out.println(MALFORMEDURL_ERROR);
+            System.out.println(MALFORMED_URL_ERROR);
             if(DEBUG)
                 murle.printStackTrace();
         }
+        /*If remote exception is thrown, set the serverAlive boolean to false,
+        so that the client program wont enter the main loop, since it will be futile.*/
         catch (RemoteException re) {
             System.out.println(REMOTE_ERROR);
             System.out.println(REMOTE_ERROR_TROUBLESHOOT);
-            serverAlive = false;
+            this.serverAlive = false;
             if(DEBUG)
                 re.printStackTrace();
         }
@@ -110,6 +113,14 @@ public abstract class Client implements Serializable {
     public boolean isServerAlive() {
 
         return serverAlive;
+    }
+
+    /**
+     * Mutator method for serverAlive boolean.
+     * @param serverAlive is what will change serverAlive to
+     */
+    public void setServerAlive(boolean serverAlive) {
+        this.serverAlive = serverAlive;
     }
 
     /**

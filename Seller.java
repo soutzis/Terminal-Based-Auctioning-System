@@ -75,10 +75,10 @@ public class Seller extends Client {
      * @return a new Seller() with a randomly generated Universally Unique ID.
      */
     @Override
-    public Client createClient(){
+    public Seller createClient(){
         Scanner scanner = new Scanner(System.in);
         String name, email = null;
-        System.out.println("A new seller client will be created.\nPlease enter the required details.");
+        System.out.println("A new client will be registered with the server.\nPlease enter the required details.");
         System.out.print("Name: ");
         name = scanner.nextLine();
         //if provided email address does not conform to an email's syntax, then spin
@@ -87,8 +87,16 @@ public class Seller extends Client {
             System.out.print("Email: ");
             email = scanner.nextLine();
         }
+        //Will return this if registration was successful. If not, recursive call of method.
+        Seller seller = new Seller(name, email);
 
-        return new Seller(name,email);
+        //If seller id is null and server is responsive, prompt to enter details again and retry to register
+        if(seller.getUid()==null && seller.isServerAlive()){
+            System.out.println("Failed to register user. Client program will prompt for registration again...");
+            return createClient();
+        }
+        else
+            return seller;
     }
 
     /**
@@ -177,6 +185,7 @@ public class Seller extends Client {
     public String chooseAuctionToClose(){
         Scanner scanner = new Scanner(System.in);
         try {
+            //Get **this** seller's auctions.
             ArrayList<Auction> myAuctions = (ArrayList<Auction>) serverReference.browseAuctionsOfSeller(this.getUid());
 
             //If the list provided by the server is empty, then inform user and return.
@@ -201,10 +210,7 @@ public class Seller extends Client {
 
             if (choice == 0)
                 return null;
-            else if(choice < 0 || choice > myAuctions.size()){
-                System.out.println(INDEX_OUT_OF_BOUNDS_ERROR);
-                return chooseAuctionToClose();
-            }
+
             else
                 return myAuctions.get(choice-1).getAuctionId();
         }
@@ -213,6 +219,12 @@ public class Seller extends Client {
             if(DEBUG)
                 System.out.println(re.getMessage());
             return null;
+        }
+        catch(IndexOutOfBoundsException ioobe){
+            System.out.println(INDEX_OUT_OF_BOUNDS_ERROR);
+            if(DEBUG)
+                ioobe.printStackTrace();
+            return chooseAuctionToClose();
         }
         catch (InputMismatchException ime){
             System.out.println(INPUT_NOT_NUMERICAL_ERROR);

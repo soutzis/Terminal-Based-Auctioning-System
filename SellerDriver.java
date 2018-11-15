@@ -11,7 +11,7 @@ public class SellerDriver {
     public static void main(String[] args){
         //Default constructor, used to call createClient() method
         Seller temp = new Seller();
-        final Seller seller = (Seller)temp.createClient();
+        final Seller seller = temp.createClient();
         //initially set to -1 to enter the main program loop
         int choice = -1;
 
@@ -33,7 +33,7 @@ public class SellerDriver {
                     System.out.println("\nAuction has been successfully created. Auction ID is \""+auctionID+"\"");
                 }
                 //if user chooses to close an auction, this will list all the auctions owned by user and then user
-                //can choose 1.
+                //can choose one of them.
                 else if (choice == Seller.CLOSE_AUCTION){
                     String auctionId = seller.chooseAuctionToClose();
 

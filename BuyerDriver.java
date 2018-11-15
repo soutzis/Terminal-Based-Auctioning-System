@@ -22,7 +22,8 @@ public class BuyerDriver {
                 String selectedAuctionID = buyer.browseAuctionToBid();
                 if(selectedAuctionID!=null){
                     String serverReply = buyer.placeBid(selectedAuctionID);
-                    System.out.println(serverReply);
+                    if(serverReply != null)
+                        System.out.println(serverReply);
                 }
             }
 

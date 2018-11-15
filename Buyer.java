@@ -30,8 +30,8 @@ public class Buyer extends Client {
     /*Warnings that are shown to the user, when they provide an invalid input*/
     private final String NO_ACTIVE_AUCTIONS_ERROR = "\nUnfortunately, there are no auctions available!";
     private final String BID_INVALID_ERROR = "\nYour bid was rejected, because it was invalid. Enter a valid bid.";
-    private final String CHOICE_OUT_OF_BOUNDS_ERROR = "\nYOU CAN ONLY ENTER A NUMBER IN THE RANGE OF THE VALUES: ";
-    private final String INITIAL_MENU_MISMATCH_ERROR = "\nYOUR INPUT WAS REJECTED!" +
+    private final String INDEX_OUT_OF_BOUNDS_ERROR = "\nYOUR INPUT IS OUT OF THE ACCEPTABLE RANGE";
+    private final String INITIAL_MENU_ERROR = "\nYOUR INPUT WAS REJECTED!" +
             "\nPLEASE ENTER A *NUMERIC VALUE* IN THE RANGE OF THE VALUES "+MIN_BUYER_CHOICE+" - "+MAX_BUYER_CHOICE;
 
 
@@ -73,8 +73,15 @@ public class Buyer extends Client {
             System.out.print("Email: ");
             email = scanner.nextLine();
         }
+        //Will return this if registration was successful. If not, recursive call of method.
+        Buyer buyer = new Buyer(name, email);
 
-        return new Buyer(name,email);
+        if(buyer.getUid()==null && buyer.isServerAlive()){
+            System.out.println("Failed to register user. Client program will prompt for registration again...");
+            return createClient();
+        }
+        else
+            return buyer;
     }
 
     /**
@@ -89,7 +96,7 @@ public class Buyer extends Client {
 
             int choice = scanner.nextInt();
             if(choice < Buyer.MIN_BUYER_CHOICE || choice > Buyer.MAX_BUYER_CHOICE){
-                System.out.println(INITIAL_MENU_MISMATCH_ERROR);
+                System.out.println(INITIAL_MENU_ERROR);
 
                 return takeBuyerAction();
             }
@@ -97,7 +104,7 @@ public class Buyer extends Client {
                 return choice;
         }
         catch(InputMismatchException ime){
-            System.out.println(INITIAL_MENU_MISMATCH_ERROR);
+            System.out.println(INITIAL_MENU_ERROR);
             if(DEBUG)
                 System.out.println(ime.getMessage());
 
@@ -113,10 +120,10 @@ public class Buyer extends Client {
      */
     public String browseAuctionToBid(){
         Scanner scanner = new Scanner(System.in);
-        ArrayList<Auction> auctions = new ArrayList<>();
         int choice;
+
         try{
-            auctions = (ArrayList<Auction>)serverReference.browseActiveAuctions();
+            ArrayList<Auction> auctions = (ArrayList<Auction>)serverReference.browseActiveAuctions();
             //If list is empty, show error to user.
             if(auctions.isEmpty()){
                 System.out.println(NO_ACTIVE_AUCTIONS_ERROR);
@@ -153,10 +160,16 @@ public class Buyer extends Client {
             return null;
         }
         catch(InputMismatchException ime){
-            System.out.println(CHOICE_OUT_OF_BOUNDS_ERROR +"0 - " +auctions.size()+".");
+            System.out.println(INDEX_OUT_OF_BOUNDS_ERROR);
             if(DEBUG)
                 System.out.println(ime.getMessage());
-            return null;
+            return browseAuctionToBid();
+        }
+        catch(IndexOutOfBoundsException ioobe){
+            System.out.println(INDEX_OUT_OF_BOUNDS_ERROR);
+            if(DEBUG)
+                ioobe.printStackTrace();
+            return browseAuctionToBid();
         }
     }
 

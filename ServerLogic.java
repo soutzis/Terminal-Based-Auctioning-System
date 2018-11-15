@@ -1,13 +1,10 @@
 import java.math.BigDecimal;
 import java.rmi.RemoteException;
 import java.rmi.server.UnicastRemoteObject;
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Semaphore;
-import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
 /**
@@ -23,10 +20,10 @@ public class ServerLogic extends UnicastRemoteObject implements ServerInterface{
     private ConcurrentHashMap<String, Client> clients = new ConcurrentHashMap<>();
 
     /*Provides atomic access to operations that check the active status of an auction.*/
-    private Semaphore isActiveMutex = new Semaphore(1, true);
+    private static Semaphore isActiveMutex = new Semaphore(1, true);
 
     /*String constants that are used to indicate if an operation was successful or if an error was encountered.*/
-    private final String USER_REGISTERED_SUCCESS = "Client has been successfully registered!";
+    private final String USER_REGISTERED_SUCCESS = "\nClient has been successfully registered!";
     private final String USER_EXISTS_ERROR = "\nA user with this ID is already registered on server!";
     private final String USER_UNREGISTERED_ERROR = "\nYou have to register with the server first!";
     private final String AUCTION_NOT_EXISTS_ERROR = "\nThe auction with the id you provided does not exist.";
@@ -37,6 +34,7 @@ public class ServerLogic extends UnicastRemoteObject implements ServerInterface{
     private final String BID_REFUSED = "\nYour bid has been refused.";
     private final String BID_ACCEPTED = "\nYour bid has been accepted and processed by the server.";
     private final String INSUFFICIENT_BID_ERROR = "\nThe amount specified, is less than, or equal to the current bid.";
+    private final String EMAIL_EXISTS_ERROR = "\nThe email you have entered is already registered with another user.";
 
     /*When 'DEBUG' is set to true, developer can view error-related messages when an exception is thrown.*/
     private final boolean DEBUG = false;
@@ -57,14 +55,27 @@ public class ServerLogic extends UnicastRemoteObject implements ServerInterface{
      * @return A message indicating if the client was successfully registered.
      */
     @Override
-    public String registerClient(Client client){
+    public synchronized ServerRegistrationReply registerClient(Client client){
+        ServerRegistrationReply reply = new ServerRegistrationReply();
         //check if a Client exists in the database with the same ID as the provided Client's
-        if(clients.containsKey(client.getUid()))
-            return USER_EXISTS_ERROR;
-        else{
-            clients.put(client.getUid(), client);
-            return USER_REGISTERED_SUCCESS + " Client ID = "+client.getUid();
+        if(clients.containsKey(reply.getUid())){
+            reply.setSuccess(false);
+            reply.setMsg(USER_EXISTS_ERROR);
         }
+        //check if a Client exists in the database with the same email as the Client parsed as parameter
+        else if(clients
+                .values()
+                .stream()
+                .anyMatch(regUser -> regUser.getEmail().toUpperCase().equals(client.getEmail().toUpperCase()))){
+            reply.setSuccess(false);
+            reply.setMsg(EMAIL_EXISTS_ERROR);
+        }
+        //if all checks are OK, add user to "database" and return
+        else{
+            reply.setMsg(USER_REGISTERED_SUCCESS);
+            clients.put(reply.getUid(), client);
+        }
+        return reply;
     }
 
     /**
@@ -137,7 +148,8 @@ public class ServerLogic extends UnicastRemoteObject implements ServerInterface{
             return AUCTION_CLOSED_ACK+"\n\nThe winner is the buyer with:" +
                     "\nID = "+winner.getUid()+
                     "\nNAME = "+winner.getName()+
-                    "\nEMAIL = "+winner.getEmail();
+                    "\nEMAIL = "+winner.getEmail()+
+                    "\nSOLD FOR £"+auctions.get(auctionID).getCurrentBid()+"!";
         }
     }
 

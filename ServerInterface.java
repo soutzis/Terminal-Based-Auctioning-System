@@ -21,11 +21,12 @@ public interface ServerInterface extends Remote {
      * of the server. It registers a client to the server, so that the server knows who its users are,
      * at any point in time.
      * @param client The Client() object that will be registered on the server.
-     * @return A message that will indicate if the client was successfully registered.
+     * @return A ServerRegistrationReply object that will indicate if the client was successfully registered.
+     * The return object instance contains the uid that the client will have and a message from the server.
      * @throws RemoteException Is thrown for any communication-related exception(s) that may occur during the execution
      * of a remote method call.
      */
-    String registerClient(Client client) throws RemoteException;
+    ServerRegistrationReply registerClient(Client client) throws RemoteException;
 
     /**
      * This will create a new Auction-type object and set the Client-type object provided as its owner.
