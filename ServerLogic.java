@@ -137,16 +137,16 @@ public class ServerLogic extends UnicastRemoteObject implements ServerInterface{
                 ie.printStackTrace();
             }
         }
-
         //Check if reserve was reached
         if(!auctions.get(auctionID).isReserveReached())
             return AUCTION_CLOSED_ACK+RESERVE_NOT_REACHED_MESSAGE;
         //If reserve was reached, read the winner id and find them from the clients map
         else{
-            Buyer winner = (Buyer)clients.get(auctions.get(auctionID).getCurrentWinnerId());
+            String winnerId = auctions.get(auctionID).getCurrentWinnerId();
+            Buyer winner = (Buyer)clients.get(winnerId);
 
             return AUCTION_CLOSED_ACK+"\n\nThe winner is the buyer with:" +
-                    "\nID = "+winner.getUid()+
+                    "\nID = "+winnerId+
                     "\nNAME = "+winner.getName()+
                     "\nEMAIL = "+winner.getEmail()+
                     "\nSOLD FOR £"+auctions.get(auctionID).getCurrentBid()+"!";
@@ -163,7 +163,6 @@ public class ServerLogic extends UnicastRemoteObject implements ServerInterface{
     @Override
     public synchronized String bid(String auctionId, BigDecimal bidAmount, Client buyer){
         String buyerID = buyer.getUid();
-        String serverReply = null;
 
         /*Critical section if closeAuction() + bid() at the same time.
           If closeAuction was first, auction will close and bidder will get an error message,
@@ -171,9 +170,11 @@ public class ServerLogic extends UnicastRemoteObject implements ServerInterface{
           critical section*/
         try{
             isActiveMutex.acquire();
-            if(!auctions.get(auctionId).isActive())
-                serverReply = BID_REFUSED+AUCTION_CLOSED_ERROR;
+            boolean auctionIsActive = auctions.get(auctionId).isActive();
             isActiveMutex.release();
+
+            if(!auctionIsActive)
+                return BID_REFUSED+AUCTION_CLOSED_ERROR;
         }
         catch (InterruptedException ie){
             if(DEBUG)
@@ -202,10 +203,10 @@ public class ServerLogic extends UnicastRemoteObject implements ServerInterface{
                 //if reserve price has been reached, set the winner of this auction
                 auctions.get(auctionId).setReserveReached(true);
                 auctions.get(auctionId).setCurrentWinner(buyerID);
+                return BID_ACCEPTED;
             }
-            return BID_ACCEPTED;
         }
-        return serverReply;
+        return null;
     }
 
     /**

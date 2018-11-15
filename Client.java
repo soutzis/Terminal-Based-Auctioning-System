@@ -52,7 +52,7 @@ public abstract class Client implements Serializable {
             System.out.println("Server >> "+reply.getMsg()+"\n<< Server");
             if(reply.isSuccessful()){
                 this.uid = reply.getUid();
-                System.out.println("--->Your unique ID is: "+this.uid+"<---");
+                System.out.println("*Your unique ID is: "+this.uid+"*");
             }
         }
         catch (NotBoundException nbe) {
