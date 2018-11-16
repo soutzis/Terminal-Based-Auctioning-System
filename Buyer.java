@@ -63,12 +63,16 @@ public class Buyer extends Client {
     @Override
     public Buyer createClient() {
         Scanner scanner = new Scanner(System.in);
-        String name, email = null;
+        String name = null, email = null;
         System.out.println("A new buyer client will be created.\nPlease enter the required details.");
-        System.out.print("Name: ");
-        name = scanner.nextLine();
+
+        while(!detailsValidator(name, NAME_REGEX)){
+            System.out.println("Enter a name, that consists only of AlphaNumeric characters and is 5-30 characters long!");
+            System.out.print("Name: ");
+            name = scanner.nextLine();
+        }
         //if provided email address does not conform to an email's syntax, then spin
-        while(!emailValidator(email)){
+        while(!detailsValidator(email, EMAIL_REGEX)){
             System.out.println("Enter a valid email address. E.g. someone@example.com");
             System.out.print("Email: ");
             email = scanner.nextLine();
@@ -123,7 +127,7 @@ public class Buyer extends Client {
         int choice;
 
         try{
-            ArrayList<Auction> auctions = (ArrayList<Auction>)serverReference.browseActiveAuctions();
+            ArrayList<Auction> auctions = (ArrayList<Auction>)getServerReference().browseActiveAuctions();
             //If list is empty, show error to user.
             if(auctions.isEmpty()){
                 System.out.println(NO_ACTIVE_AUCTIONS_ERROR);
@@ -132,19 +136,20 @@ public class Buyer extends Client {
 
             //display auctions in a nice, formatted way
             System.out.println(CHOOSE_AUCTION_MSG);
-            System.out.println(serverReference.AUCTIONS_TABLE_LINE_SEPARATOR);
-            System.out.format(serverReference.AUCTIONS_TABLE_ATTRIBUTES_FORMAT,
+            System.out.println(getServerReference().AUCTIONS_TABLE_LINE_SEPARATOR);
+            System.out.format(getServerReference().AUCTIONS_TABLE_ATTRIBUTES_FORMAT,
                     "#","Auction ID", "Item Description", "Current Bid");
-            System.out.println(serverReference.AUCTIONS_TABLE_LINE_SEPARATOR);
+            System.out.println(getServerReference().AUCTIONS_TABLE_LINE_SEPARATOR);
             System.out.println("0. Quit Browsing");
             for(int i=1; i<=auctions.size(); i++){
                 Auction a = auctions.get(i-1);
                 System.out.format("%-3s%36s%50s%16s%n",(i+". "),
                         a.getAuctionId(),a.getDescription(),"£"+a.getCurrentBid());
             }
-            System.out.println(serverReference.AUCTIONS_TABLE_LINE_SEPARATOR);
+            System.out.println(getServerReference().AUCTIONS_TABLE_LINE_SEPARATOR);
             System.out.print(CHOOSE_AUCTION_INPUT);
 
+            //Get index of auction in List
             choice = scanner.nextInt();
 
             if (choice == 0)
@@ -187,7 +192,7 @@ public class Buyer extends Client {
             System.out.print(PLACE_BID_MSG);
             bidAmount = scanner.nextBigDecimal();
 
-            return serverReference.bid(auctionId, bidAmount, this);
+            return getServerReference().bid(auctionId, bidAmount, this);
         }
         catch(RemoteException re){
             System.out.println(REMOTE_ERROR);

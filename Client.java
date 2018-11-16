@@ -11,19 +11,21 @@ import java.util.regex.Pattern;
  */
 public abstract class Client implements Serializable {
 
-    public static final String REMOTE_ERROR = "\nSomething went wrong when contacting the server!";
-
     private String uid, name, email;
     private boolean serverAlive = false;
-
-    protected ServerInterface serverReference;
-    protected final boolean DEBUG = false;  /*For debugging purposes of classes that inherit from Client*/
+    private ServerInterface serverReference;
 
     private final String MALFORMED_URL_ERROR = "Please check if the URL of the server is valid and try again.";
     private final String NOT_BOUND_ERROR = "It appears that the server name you provided can't be found." +
             "\nVerify that the server name is correct and try again.";
     private final String REMOTE_ERROR_TROUBLESHOOT = "Please make sure that your Client program's source code " +
             "was not altered since the server was booted-up.\nRestart the server and try again.";
+    public static final String REMOTE_ERROR = "\nSomething went wrong when contacting the server!";
+    protected final String EMAIL_REGEX =
+            "^[a-zA-Z0-9_+&*-]+(?:\\.[a-zA-Z0-9_+&*-]+)*@(?:[a-zA-Z0-9-]+\\.)+[a-zA-Z]{2,7}$";/*email validation*/
+    protected final String NAME_REGEX = "^[a-zA-Z0-9]{5,30}$";/*name validation*/
+
+    protected final boolean DEBUG = false;  /*For debugging purposes of classes that inherit from Client*/
 
     /**
      * This is the default constructor for a Client-application. It needs to be called first,
@@ -116,25 +118,35 @@ public abstract class Client implements Serializable {
     }
 
     /**
-     * Mutator method for serverAlive boolean.
+     * @return the serverInterface instance. Can't be tampered with from subclasses or classes that reference a Client()
+     */
+    public ServerInterface getServerReference() {
+
+        return serverReference;
+    }
+
+    /**
+     * Mutator method for serverAlive boolean. It can be used to terminate clients automatically.
      * @param serverAlive is what will change serverAlive to
      */
     public void setServerAlive(boolean serverAlive) {
+
         this.serverAlive = serverAlive;
     }
 
     /**
-     * This method is used to confirm that an email used for a client instance is valid.
-     * @param email The email that will have its syntax checked
-     * @return True if the email is valid, False otherwise.
+     * This method is used to confirm that the details that the user has entered are valid.
+     * It allows 5 - 30 characters for a user name and only syntactically correct email addresses.
+     * @param str The input that will have its syntax checked.
+     * @param regex The regular expression for the input that is allowed.
+     * @return True if user input is valid, False otherwise.
      */
-    protected boolean emailValidator(String email){
-        if(email == null)
+    protected boolean detailsValidator(String str, String regex){
+        if(str == null)
             return false;
 
-        String validEmailRegEx = "^[a-zA-Z0-9_+&*-]+(?:\\.[a-zA-Z0-9_+&*-]+)*@(?:[a-zA-Z0-9-]+\\.)+[a-zA-Z]{2,7}$";
-        Pattern pattern = Pattern.compile(validEmailRegEx);
+        Pattern pattern = Pattern.compile(regex);
 
-        return pattern.matcher(email).matches();
+        return pattern.matcher(str).matches();
     }
 }

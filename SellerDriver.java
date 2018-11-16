@@ -27,7 +27,7 @@ public class SellerDriver {
                     String description = seller.getItemDescription();
                     BigDecimal reservePrice = seller.getReservePrice();
                     BigDecimal startPrice = seller.getStartingPrice(reservePrice);
-                    String auctionID = seller.serverReference
+                    String auctionID = seller.getServerReference()
                             .initAuction(startPrice, reservePrice, description, seller);
 
                     System.out.println("\nAuction has been successfully created. Auction ID is \""+auctionID+"\"");
@@ -40,7 +40,7 @@ public class SellerDriver {
                     //if returned id is null, go to start of loop
                     if(auctionId != null){
                         System.out.println("A request will be sent, to close the auction with id \""+auctionId+"\".");
-                        System.out.println(seller.serverReference.closeAuction(auctionId, seller));
+                        System.out.println(seller.getServerReference().closeAuction(auctionId, seller));
                     }
                 }
             }

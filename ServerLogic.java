@@ -2,7 +2,6 @@ import java.math.BigDecimal;
 import java.rmi.RemoteException;
 import java.rmi.server.UnicastRemoteObject;
 import java.util.List;
-import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Semaphore;
 import java.util.stream.Collectors;
@@ -90,11 +89,10 @@ public class ServerLogic extends UnicastRemoteObject implements ServerInterface{
     public synchronized String initAuction(BigDecimal startPrice, BigDecimal minPriceAccepted,
                               String description, Client seller) {
 
-        String auctionID = UUID.randomUUID().toString();
-        Auction auction = new Auction(seller.getUid(), auctionID, startPrice, minPriceAccepted, description);
-        auctions.put(auctionID, auction);
+        Auction auction = new Auction(seller.getUid(), startPrice, minPriceAccepted, description);
+        auctions.put(auction.getAuctionId(), auction);
 
-        return auctionID;
+        return auction.getAuctionId();
     }
 
     /**

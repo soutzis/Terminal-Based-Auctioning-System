@@ -34,8 +34,8 @@ public class Seller extends Client {
     private final String DESCRIPTION_MSG = "\nPlease enter the description of the item you want to sell. " +
             "E.g: \"A red pen. A pen that has red ink!\""
             +"\nMake sure you enter something concise and meaningful!!"
-            +"\nYour description must be between "+ServerInterface.MIN_ITEM_DESCRIPTION_CHARACTERS+
-            " - "+ServerInterface.MAX_ITEM_DESCRIPTION_CHARACTERS+
+            +"\nYour description must be between "+ServerInterface.MIN_ITEM_DESCRIPTION_CHARS +
+            " - "+ServerInterface.MAX_ITEM_DESCRIPTION_CHARS +
             " characters long (whitespace does not count)."
             +"\nDescription: ";
 
@@ -77,12 +77,16 @@ public class Seller extends Client {
     @Override
     public Seller createClient(){
         Scanner scanner = new Scanner(System.in);
-        String name, email = null;
+        String name = null, email = null;
         System.out.println("A new client will be registered with the server.\nPlease enter the required details.");
-        System.out.print("Name: ");
-        name = scanner.nextLine();
+
+        while(!detailsValidator(name, NAME_REGEX)){
+            System.out.println("Enter a name, that consists only of AlphaNumeric characters and is 5-30 characters long!");
+            System.out.print("Name: ");
+            name = scanner.nextLine();
+        }
         //if provided email address does not conform to an email's syntax, then spin
-        while(!emailValidator(email)){
+        while(!detailsValidator(email, EMAIL_REGEX)){
             System.out.println("Enter a valid email address. E.g. someone@example.com");
             System.out.print("Email: ");
             email = scanner.nextLine();
@@ -139,8 +143,8 @@ public class Seller extends Client {
 
         //If description entered exceeds the character limit, or if it is below the minimum characters required, spin
         while(description==null
-                || description.trim().length()<ServerInterface.MIN_ITEM_DESCRIPTION_CHARACTERS
-                || description.trim().length()>ServerInterface.MAX_ITEM_DESCRIPTION_CHARACTERS){
+                || description.trim().length()<ServerInterface.MIN_ITEM_DESCRIPTION_CHARS
+                || description.trim().length()>ServerInterface.MAX_ITEM_DESCRIPTION_CHARS){
             System.out.print(DESCRIPTION_MSG);
             description = scanner.nextLine();
         }
@@ -180,13 +184,14 @@ public class Seller extends Client {
 
     /**
      * Will be used to close an auction. Method will return all the auctions owned by the client calling this method.
-     * @return
+     * @return The id of the auction that will be closed.
      */
     public String chooseAuctionToClose(){
         Scanner scanner = new Scanner(System.in);
         try {
             //Get **this** seller's auctions.
-            ArrayList<Auction> myAuctions = (ArrayList<Auction>) serverReference.browseAuctionsOfSeller(this.getUid());
+            final ArrayList<Auction> myAuctions =
+                    (ArrayList<Auction>) getServerReference().browseAuctionsOfSeller(this.getUid());
 
             //If the list provided by the server is empty, then inform user and return.
             if(myAuctions.isEmpty()){
@@ -194,18 +199,19 @@ public class Seller extends Client {
                 return null;
             }
             System.out.println("\nPlease choose the number of the auction you want to close or press \"0\" to quit.");
-            System.out.println(serverReference.AUCTIONS_TABLE_LINE_SEPARATOR);
-            System.out.format(serverReference.AUCTIONS_TABLE_ATTRIBUTES_FORMAT,
+            System.out.println(getServerReference().AUCTIONS_TABLE_LINE_SEPARATOR);
+            System.out.format(getServerReference().AUCTIONS_TABLE_ATTRIBUTES_FORMAT,
                     "#","Auction ID", "Item Description", "Current Bid");
-            System.out.println(serverReference.AUCTIONS_TABLE_LINE_SEPARATOR);
+            System.out.println(getServerReference().AUCTIONS_TABLE_LINE_SEPARATOR);
             System.out.println("0. Go to previous menu");
             for (int i = 1; i <= myAuctions.size(); i++) {
                 Auction a = myAuctions.get(i-1);
                 System.out.format("%-3s%36s%50s%16s%n",(i+". "),
                         a.getAuctionId(),a.getDescription(),"£"+a.getCurrentBid());
             }
-            System.out.println(serverReference.AUCTIONS_TABLE_LINE_SEPARATOR);
+            System.out.println(getServerReference().AUCTIONS_TABLE_LINE_SEPARATOR);
             System.out.print("\nEnter the number(#) of your choice: ");
+            //Get index of auction in List
             int choice = scanner.nextInt();
 
             if (choice == 0)

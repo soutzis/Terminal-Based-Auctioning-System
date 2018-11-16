@@ -1,5 +1,6 @@
 import java.io.Serializable;
 import java.math.BigDecimal;
+import java.util.UUID;
 
 /**
  * This class is a POJO that represents an Auction.
@@ -14,18 +15,18 @@ public class Auction implements Serializable {
     /**
      * This is the Auction constructor. It will initialize an auction with the current winner set to null,
      * isActive set to true and current bid is set to be equal to the provided starting price.
+     * An id for this auction will be randomly generated at this point.
      * @param sellerId The ID of the seller who initiated this auction
-     * @param auctionId The ID of the auction itself
      * @param startPrice The start price of the auction
      * @param minPriceAccepted The reserve price of the auction
      * @param description The description of the item for sale
      */
-    public Auction(String sellerId, String auctionId, BigDecimal startPrice,
+    public Auction(String sellerId, BigDecimal startPrice,
             BigDecimal minPriceAccepted, String description){
 
+        this.auctionId = UUID.randomUUID().toString();
         this.currentWinnerId = null;
         this.sellerId = sellerId;
-        this.auctionId = auctionId;
         this.reservePrice = minPriceAccepted;
         this.description = description;
         this.isActive = true;

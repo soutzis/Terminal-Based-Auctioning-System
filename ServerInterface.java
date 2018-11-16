@@ -9,8 +9,8 @@ import java.util.List;
  */
 public interface ServerInterface extends Remote {
 
-    public static final int MAX_ITEM_DESCRIPTION_CHARACTERS = 50;/*Maximum characters for auction description*/
-    public static final int MIN_ITEM_DESCRIPTION_CHARACTERS = 10;/*Minimum characters for auction description*/
+    public static final int MAX_ITEM_DESCRIPTION_CHARS = 50;/*Maximum characters for auction description*/
+    public static final int MIN_ITEM_DESCRIPTION_CHARS = 10;/*Minimum characters for auction description*/
     public static final String AUCTIONS_TABLE_LINE_SEPARATOR = "--------------------------------------------" +
             "-----------------------------------------------------------------";/*For auctions' output-formatting*/
     public static final String AUCTIONS_TABLE_ATTRIBUTES_FORMAT = "%-3s%-36s%50s%16s%n";/*Format of auction attributes*/
