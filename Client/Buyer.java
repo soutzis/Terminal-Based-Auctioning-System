@@ -1,6 +1,13 @@
+package Client;
+
+import Server.Auction;
+import Server.Client;
+
+import java.io.Console;
 import java.math.BigDecimal;
 import java.rmi.RemoteException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.InputMismatchException;
 import java.util.Scanner;
 
@@ -51,9 +58,9 @@ public class Buyer extends Client {
      * @param name The name of the user. Can be anything, even a number.
      * @param email The email of the user. This has to be a syntactically valid email
      */
-    private Buyer(String name, String email){
+    private Buyer(String name, String email, String password){
 
-        super(name, email);
+        super(name, email, password);
     }
 
     /**
@@ -63,7 +70,9 @@ public class Buyer extends Client {
     @Override
     public Buyer createClient() {
         Scanner scanner = new Scanner(System.in);
+        Console console = System.console();
         String name = null, email = null;
+        char[] password, verification;
         System.out.println("A new buyer client will be created.\nPlease enter the required details.");
 
         while(!detailsValidator(name, NAME_REGEX)){
@@ -77,8 +86,16 @@ public class Buyer extends Client {
             System.out.print("Email: ");
             email = scanner.nextLine();
         }
+
+        do{
+            //password = console.readPassword("Enter your password: ");
+            //verification = console.readPassword("Re-enter your password: ");
+            password = "test".toCharArray();
+            verification = "test".toCharArray();
+        }while(!Arrays.equals(password,verification));
+
         //Will return this if registration was successful. If not, recursive call of method.
-        Buyer buyer = new Buyer(name, email);
+        Buyer buyer = new Buyer(name, email, new String(password));
 
         if(buyer.getUid()==null && buyer.isServerAlive()){
             System.out.println("Failed to register user. Client program will prompt for registration again...");

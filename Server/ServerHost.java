@@ -1,4 +1,5 @@
-import java.net.BindException;
+package Server;
+
 import java.net.MalformedURLException;
 import java.rmi.Naming;
 import java.rmi.RemoteException;
@@ -9,7 +10,7 @@ import java.rmi.registry.Registry;
  * This class is where the server implementation will run. It can not be extended.
  * @author Petros Soutzis
  */
-public final class ServerHost {
+final class ServerHost {
 
     /*Constants that the server will use, to fire-up the rmi registry service.
     This includes the host ip address/hostname, server name and port number.

@@ -1,7 +1,13 @@
+package Server;
+
+import javax.crypto.*;
+import java.io.IOException;
 import java.math.BigDecimal;
 import java.rmi.RemoteException;
 import java.rmi.server.UnicastRemoteObject;
+import java.security.*;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Semaphore;
 import java.util.stream.Collectors;
@@ -10,16 +16,21 @@ import java.util.stream.Collectors;
  * This class is the Server's implementation (logic). The client need not know about how methods in this class work.
  * @author Petros Soutzis
  */
-public class ServerLogic extends UnicastRemoteObject implements ServerInterface{
+class ServerLogic extends UnicastRemoteObject implements ServerInterface {
+
+    /*The server's RSA key pair*/
+    private PublicKey publicKey;
+    private PrivateKey privateKey;
 
     /*ConcurrentHashMap<K,V> is used, to avoid a ConcurrentModificationException to be thrown
      if one thread tries to modify it while another is iterating over it.
      This is the in-memory database of the server.*/
     private ConcurrentHashMap<String, Auction> auctions = new ConcurrentHashMap<>();
     private ConcurrentHashMap<String, Client> clients = new ConcurrentHashMap<>();
+    private ConcurrentHashMap<String, AuthenticationState> authState = new ConcurrentHashMap<>();
 
     /*Provides atomic access to operations that check the active status of an auction.*/
-    private static Semaphore isActiveMutex = new Semaphore(1, true);
+    private static Semaphore auctionIsActiveMutex = new Semaphore(1, true);
 
     /*String constants that are used to indicate if an operation was successful or if an error was encountered.*/
     private final String USER_REGISTERED_SUCCESS = "\nClient has been successfully registered!";
@@ -46,6 +57,132 @@ public class ServerLogic extends UnicastRemoteObject implements ServerInterface{
      */
     ServerLogic() throws  RemoteException{
         super();
+        //initialize keystore of this server
+        KeyManager keyManager = new KeyManager();
+        publicKey = keyManager.getServerKeyPair().getPublic();
+        privateKey = keyManager.getServerKeyPair().getPrivate();
+    }
+
+    @Override
+    public PublicKey getServerPubKey() {
+
+        return this.publicKey;
+    }
+
+    //todo catch all errors of method
+    @Override
+    public synchronized SealedObject authenticateServer(SealedObject challenge) {
+        SealedObject newChallenge = null;
+        try {
+            Cipher cipher = Cipher.getInstance(privateKey.getAlgorithm());
+            cipher.init(Cipher.PRIVATE_KEY, privateKey);
+            //client requests that server authenticates itself. Log successful decryption
+            AuthenticationRequest request = (AuthenticationRequest)challenge.getObject(cipher);
+
+            AuthenticationState currentState = new AuthenticationState(true, 1);
+            authState.put(request.getEmail(), currentState);
+
+            //Successfully solved challenge
+            AuthenticationReply reply = new AuthenticationReply(request.getNumber());
+            //Find client reference that the user claims to be.
+            Optional<Client> optionalClient= clients
+                    .values()
+                    .stream()
+                    .filter(x -> x.getEmail().equals(request.getEmail()))
+                    .findFirst();
+            //If no matching client is found, return null and remove log.
+            Client client = optionalClient.orElse(null);
+            if (client == null)
+                return null;
+
+            //else if client is valid, get their public key and encrypt challenge to send
+            cipher.init(Cipher.PUBLIC_KEY, client.getPublicKey());
+            newChallenge = new SealedObject(reply, cipher);
+
+            //Now send solved + new challenge back to client and log transaction
+            currentState = new AuthenticationState(true, 2, reply.getNewChallengeNumber(), client);
+            authState.replace(request.getEmail(), currentState);
+        }
+        catch (NoSuchAlgorithmException e) {
+            e.printStackTrace();
+        }
+        catch (NoSuchPaddingException e) {
+            e.printStackTrace();
+        }
+        catch (InvalidKeyException e) {
+            e.printStackTrace();
+        }
+        catch (IOException e) {
+            e.printStackTrace();
+        }
+        catch (ClassNotFoundException e) {
+            e.printStackTrace();
+        }
+        catch (BadPaddingException e) {
+            e.printStackTrace();
+        }
+        catch (IllegalBlockSizeException e) {
+            e.printStackTrace();
+        }
+
+        //return solved answer + new challenge
+        return newChallenge;
+    }
+
+    @Override
+    public synchronized Client authenticateClient(SealedObject solvedChallenge) {
+        AuthenticationState state = null;
+        int sequence;
+        int challengeSent;
+        boolean wasSuccess;
+        //check email and see if state sequence number is 2
+        try {
+            Cipher cipher = Cipher.getInstance(privateKey.getAlgorithm());
+            cipher.init(Cipher.PRIVATE_KEY, privateKey);
+            AuthenticationRequest solvedByClient = (AuthenticationRequest) solvedChallenge.getObject(cipher);
+            String email = solvedByClient.getEmail();
+
+            if(!authState.containsKey(email))
+                return null;
+            else {
+                state = authState.get(email);
+                sequence = state.getSequenceNumber();
+                challengeSent = state.getChallengeSent();
+                wasSuccess = state.getSuccessful();
+                authState.remove(email); //now state does not exist
+            }
+
+            if(challengeSent != solvedByClient.getNumber()){
+
+                return null;
+            }
+            else if(challengeSent == solvedByClient.getNumber() && sequence == 2){
+
+                return state.getClient();
+            }
+            else{
+
+                return null;
+            }
+        }
+        catch (NoSuchAlgorithmException e) {
+            e.printStackTrace();
+        }
+        catch (NoSuchPaddingException e) {
+            e.printStackTrace();
+        }
+        catch (InvalidKeyException e) {
+            e.printStackTrace();
+        } catch (BadPaddingException e) {
+            e.printStackTrace();
+        } catch (IllegalBlockSizeException e) {
+            e.printStackTrace();
+        } catch (IOException e) {
+            e.printStackTrace();
+        } catch (ClassNotFoundException e) {
+            e.printStackTrace();
+        }
+        return null;
     }
 
     /**
@@ -57,7 +194,7 @@ public class ServerLogic extends UnicastRemoteObject implements ServerInterface{
     public synchronized ServerRegistrationReply registerClient(Client client){
         ServerRegistrationReply reply = new ServerRegistrationReply();
         //check if a Client exists in the database with the same ID as the provided Client's
-        if(clients.containsKey(reply.getUid())){
+        if(clients.containsKey(client.getUid())){
             reply.setSuccess(false);
             reply.setMsg(USER_EXISTS_ERROR);
         }
@@ -72,7 +209,7 @@ public class ServerLogic extends UnicastRemoteObject implements ServerInterface{
         //if all checks are OK, add user to "database" and return
         else{
             reply.setMsg(USER_REGISTERED_SUCCESS);
-            clients.put(reply.getUid(), client);
+            clients.put(client.getUid(), client);
         }
         return reply;
     }
@@ -126,9 +263,9 @@ public class ServerLogic extends UnicastRemoteObject implements ServerInterface{
           otherwise, bid will be placed and then auction will close as soon as it is allowed to enter
           critical section*/
         try{
-            isActiveMutex.acquire();
+            auctionIsActiveMutex.acquire();
             auctions.get(auctionID).setActive(false);
-            isActiveMutex.release();
+            auctionIsActiveMutex.release();
         }
         catch (InterruptedException ie){
             if(DEBUG){
@@ -141,7 +278,7 @@ public class ServerLogic extends UnicastRemoteObject implements ServerInterface{
         //If reserve was reached, read the winner id and find them from the clients map
         else{
             String winnerId = auctions.get(auctionID).getCurrentWinnerId();
-            Buyer winner = (Buyer)clients.get(winnerId);
+            Client winner = clients.get(winnerId);
 
             return AUCTION_CLOSED_ACK+"\n\nThe winner is the buyer with:" +
                     "\nID = "+winnerId+
@@ -167,9 +304,9 @@ public class ServerLogic extends UnicastRemoteObject implements ServerInterface{
           otherwise, bid will be placed and then auction will close as soon as it is allowed to enter
           critical section*/
         try{
-            isActiveMutex.acquire();
+            auctionIsActiveMutex.acquire();
             boolean auctionIsActive = auctions.get(auctionId).isActive();
-            isActiveMutex.release();
+            auctionIsActiveMutex.release();
 
             if(!auctionIsActive)
                 return BID_REFUSED+AUCTION_CLOSED_ERROR;

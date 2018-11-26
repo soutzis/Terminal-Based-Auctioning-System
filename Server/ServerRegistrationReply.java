@@ -1,3 +1,5 @@
+package Server;
+
 import java.io.Serializable;
 import java.util.UUID;
 
@@ -9,15 +11,12 @@ public class ServerRegistrationReply implements Serializable {
 
     private boolean success;/*indicates success of client registration*/
     private String msg;/*message from the server*/
-    private String uid;/*the id given to the client*/
 
     /**
      * Constructor will set success to true initially and assign a random UUID.
      */
-    public ServerRegistrationReply()
-    {
+    public ServerRegistrationReply() {
         this.success = true;
-        this.uid = UUID.randomUUID().toString();
     }
 
     /**
@@ -37,21 +36,11 @@ public class ServerRegistrationReply implements Serializable {
     }
 
     /**
-     * @return the id assigned to user
-     */
-    public String getUid() {
-
-        return uid;
-    }
-
-    /**
      * @param success is what the isSuccess variable will be changed to. If it is FALSE, it will set uid to null.
      */
     public void setSuccess(boolean success) {
 
         this.success = success;
-        if(!success)
-            this.uid = null;
     }
 
     /**

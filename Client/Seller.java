@@ -1,7 +1,15 @@
+package Client;
+
+import Server.Auction;
+import Server.Client;
+import Server.ServerInterface;
+
+import java.io.Console;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.rmi.RemoteException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.InputMismatchException;
 import java.util.Scanner;
 
@@ -12,9 +20,11 @@ public class Seller extends Client {
     public static final int CREATE_AUCTION = 1;/*if user selects this, they will be prompted to create a new auction*/
     public static final int CLOSE_AUCTION = 2;/*if user selects this, they can choose one of their auctions to close*/
     public static final int EXIT_PROGRAM = 3; /*if the user selects this, the client will terminate*/
+    public static final int LOGIN = 1; /*if the user selects this, the client will authenticate with server*/
+    public static final int NEW_USER = 2; /*if the user selects this, new client will be created*/
 
     /*These String constants are used for guiding the user through various steps that require their input*/
-    private final String INITIAL_USER_INPUT = "\nWhat do you want to do? (Enter the number of your choice. " +
+    private final String ACTION_USER_INPUT = "\nWhat do you want to do? (Enter the number of your choice. " +
             "E.g. To create auction, enter the number \"1\")"
             +"\n1. Create Auction"
             +"\n2. Close an Auction"
@@ -34,8 +44,8 @@ public class Seller extends Client {
     private final String DESCRIPTION_MSG = "\nPlease enter the description of the item you want to sell. " +
             "E.g: \"A red pen. A pen that has red ink!\""
             +"\nMake sure you enter something concise and meaningful!!"
-            +"\nYour description must be between "+ServerInterface.MIN_ITEM_DESCRIPTION_CHARS +
-            " - "+ServerInterface.MAX_ITEM_DESCRIPTION_CHARS +
+            +"\nYour description must be between "+ ServerInterface.MIN_ITEM_DESCRIPTION_CHARS +
+            " - "+ ServerInterface.MAX_ITEM_DESCRIPTION_CHARS +
             " characters long (whitespace does not count)."
             +"\nDescription: ";
 
@@ -46,7 +56,7 @@ public class Seller extends Client {
     private final String MIN_PRICE_ACCEPTED_ERROR = "\nThe price must be £0.01 (one cent) or more.";
     private final String START_PRICE_ERROR = "\nSTARTING PRICE CAN NOT BE GREATER THAN THE RESERVE PRICE!";
     private final String NO_ACTIVE_AUCTIONS_ERROR = "\nUnfortunately you own no active auctions at the moment.";
-    private final String INITIAL_MENU_ERROR = "\nYOUR INPUT WAS REJECTED!" +
+    private final String MAIN_MENU_ERROR = "\nYOUR INPUT WAS REJECTED!" +
             "\nPLEASE ENTER A *NUMERIC VALUE* IN THE RANGE OF THE VALUES "+MIN_SELLER_CHOICE+" - "+MAX_SELLER_CHOICE;
 
     /**
@@ -64,10 +74,11 @@ public class Seller extends Client {
      * This will create a Seller object that can be used to create or close auctions on the server.
      * @param name The name of the user. Can be anything, even a number.
      * @param email The email of the user. This has to be a syntactically valid email
+     * @param password Te password of the user.
      */
-    private Seller(String name, String email){
+    private Seller(String name, String email, String password){
 
-        super(name, email);
+        super(name, email, password);
     }
 
     /**
@@ -77,7 +88,9 @@ public class Seller extends Client {
     @Override
     public Seller createClient(){
         Scanner scanner = new Scanner(System.in);
+        Console console = System.console();
         String name = null, email = null;
+        char[] password, verification;
         System.out.println("A new client will be registered with the server.\nPlease enter the required details.");
 
         while(!detailsValidator(name, NAME_REGEX)){
@@ -91,8 +104,16 @@ public class Seller extends Client {
             System.out.print("Email: ");
             email = scanner.nextLine();
         }
+
+        do{
+            //password = console.readPassword("Enter your password: ");
+            //verification = console.readPassword("Re-enter your password: ");
+            password = "test".toCharArray();
+            verification = "test".toCharArray();
+        }while(!Arrays.equals(password,verification));
+
         //Will return this if registration was successful. If not, recursive call of method.
-        Seller seller = new Seller(name, email);
+        Seller seller = new Seller(name, email, new String(password));
 
         //If seller id is null and server is responsive, prompt to enter details again and retry to register
         if(seller.getUid()==null && seller.isServerAlive()){
@@ -103,6 +124,60 @@ public class Seller extends Client {
             return seller;
     }
 
+    //todo check errors
+    public int initialMenu(){
+        Scanner scanner = new Scanner(System.in);
+        try{
+            System.out.println("Please choose one of the following:");
+            System.out.println("1. Authenticate with server");
+            System.out.println("2. Create new user account");
+            System.out.println("3. Exit Program");
+            System.out.print("Choice: ");
+            int choice = scanner.nextInt();
+            if (choice < MIN_SELLER_CHOICE || choice > MAX_SELLER_CHOICE){
+                System.out.println(MAIN_MENU_ERROR);
+                return initialMenu();
+            }
+            else
+                return choice;
+        }
+        //Tell the user that they did wrong.
+        catch(InputMismatchException ime){
+            System.out.println(MAIN_MENU_ERROR);
+            if(DEBUG)
+                System.out.println(ime.getMessage());
+
+            return initialMenu();
+        }
+    }
+
+    public String emailForAuthentication(){
+        Scanner scanner = new Scanner(System.in);
+
+        System.out.println("The private key generated when you first registered will be used.");
+        System.out.println("Please enter the email address you provided when you registered.");
+        System.out.print("Email: ");
+        String email = scanner.nextLine();
+        try{
+            //if provided email address does not conform to an email's syntax, then spin
+            if(!detailsValidator(email, EMAIL_REGEX)){
+                System.out.println("Email provided is not a valid email address");
+                return null;
+            }
+
+        }
+        //Tell the user that they did wrong.
+        catch(InputMismatchException ime){
+            System.out.println("That is not a valid input");
+            if(DEBUG)
+                System.out.println(ime.getMessage());
+
+            return emailForAuthentication();
+        }
+
+        return email;
+    }
+
     /**
      * This method is called, to ask the user which action they want to take.
      * It will be called recursively, until the user enters a valid input.
@@ -111,13 +186,13 @@ public class Seller extends Client {
     public int takeSellerAction(){
         Scanner scanner = new Scanner(System.in);
         try{
-            System.out.print(INITIAL_USER_INPUT);
+            System.out.print(ACTION_USER_INPUT);
 
             int choice = scanner.nextInt();
 
             //If choice is out of the range of possible choices
             if (choice < MIN_SELLER_CHOICE || choice > MAX_SELLER_CHOICE){
-                System.out.println(INITIAL_MENU_ERROR);
+                System.out.println(MAIN_MENU_ERROR);
                 return takeSellerAction();
             }
             else
@@ -125,7 +200,7 @@ public class Seller extends Client {
         }
         //Tell the user that they did wrong.
         catch(InputMismatchException ime){
-            System.out.println(INITIAL_MENU_ERROR);
+            System.out.println(MAIN_MENU_ERROR);
             if(DEBUG)
                 System.out.println(ime.getMessage());
 
@@ -143,8 +218,8 @@ public class Seller extends Client {
 
         //If description entered exceeds the character limit, or if it is below the minimum characters required, spin
         while(description==null
-                || description.trim().length()<ServerInterface.MIN_ITEM_DESCRIPTION_CHARS
-                || description.trim().length()>ServerInterface.MAX_ITEM_DESCRIPTION_CHARS){
+                || description.trim().length()< ServerInterface.MIN_ITEM_DESCRIPTION_CHARS
+                || description.trim().length()> ServerInterface.MAX_ITEM_DESCRIPTION_CHARS){
             System.out.print(DESCRIPTION_MSG);
             description = scanner.nextLine();
         }

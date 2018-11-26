@@ -1,3 +1,5 @@
+package Client;
+
 /**
  * This is the main class that will create a seller and take user input.
  * @author Petros Soutzis

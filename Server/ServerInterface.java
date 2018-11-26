@@ -1,6 +1,12 @@
+package Server;
+
+import javax.crypto.SealedObject;
 import java.math.BigDecimal;
 import java.rmi.Remote;
 import java.rmi.RemoteException;
+import java.security.PublicKey;
+import java.security.SignedObject;
+import java.security.interfaces.RSAPublicKey;
 import java.util.List;
 
 /**
@@ -15,6 +21,24 @@ public interface ServerInterface extends Remote {
             "-----------------------------------------------------------------";/*For auctions' output-formatting*/
     public static final String AUCTIONS_TABLE_ATTRIBUTES_FORMAT = "%-3s%-36s%50s%16s%n";/*Format of auction attributes*/
 
+    /**
+     * @return The public key of this server
+     * @throws RemoteException Is thrown for any communication-related exception(s) that may occur during the execution
+     *      * of a remote method call.
+     */
+    PublicKey getServerPubKey() throws RemoteException;
+
+    /**
+     * This is called by the client to authenticate server
+     * @param clientChallenge Challenge by client for server to solve. It is an AuthenticationRequest.
+     * @return The server will return a reply containing the server's challenge. It is an AuthenticationReply.
+     * and the solution of the client's challenge
+     * @throws RemoteException network exception
+     */
+    SealedObject authenticateServer(SealedObject clientChallenge) throws RemoteException;
+
+
+    Client authenticateClient(SealedObject serverChallenge) throws RemoteException;
 
     /**
      * This method should be called before the client tries to invoke any of the other methods
