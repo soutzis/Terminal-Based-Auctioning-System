@@ -7,6 +7,7 @@ import java.math.BigDecimal;
 import java.rmi.RemoteException;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
+import java.security.SignatureException;
 import java.security.spec.InvalidKeySpecException;
 
 /**
@@ -98,6 +99,8 @@ public class SellerDriver {
         } catch (IllegalBlockSizeException e) {
             e.printStackTrace();
         } catch (InvalidKeySpecException e) {
+            e.printStackTrace();
+        } catch (SignatureException e) {
             e.printStackTrace();
         }
 

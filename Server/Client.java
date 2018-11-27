@@ -202,26 +202,29 @@ public abstract class Client implements Serializable {
     //todo read key from disk
     public Client challengeResponseAuthentication(String email)
             throws IOException, ClassNotFoundException, NoSuchPaddingException,
-            NoSuchAlgorithmException, IllegalBlockSizeException, InvalidKeyException, InvalidKeySpecException {
+            NoSuchAlgorithmException, IllegalBlockSizeException, InvalidKeyException,
+            InvalidKeySpecException, SignatureException {
+
+        /*Create a reference to the server stub*/
         ServerInterface localServerReference = null;
         try{
             localServerReference = (ServerInterface)Naming.lookup("rmi://localhost/AuctionSystem");
-        } catch (NotBoundException e) {
+        }
+        catch (NotBoundException e) {
             e.printStackTrace();
         }
+
         //Load private key from disk
         PrivateKey privateKey = KeyGenerator.readPrivateKey("privateKey.key");
 
         //Prepare authentication request to send to server. This will verify server identity.
         AuthenticationRequest request = new AuthenticationRequest(email);
+        byte[] signature = KeyGenerator.generateDigitalSignature(privateKey,request);
         PublicKey serverKey = localServerReference.getServerPubKey();
         Cipher encryptRequest = Cipher.getInstance(serverKey.getAlgorithm());
         encryptRequest.init(Cipher.PUBLIC_KEY, serverKey);
         //Seal AuthenticationRequest with server's public key
         SealedObject challengeReq = new SealedObject( request,encryptRequest );
-
-        //Signature signature = Signature.getInstance("SHA256withDSA");
-        //signature.initSign(privateKey);
 
         //Prepare decryption cipher using own private key
         Cipher decryptReply = Cipher.getInstance(privateKey.getAlgorithm());
@@ -229,7 +232,7 @@ public abstract class Client implements Serializable {
         AuthenticationReply reply;
         try{
             //First send request, then decrypt server's reply. If this fails, return null and display a message
-           reply =(AuthenticationReply)localServerReference.authenticateServer(challengeReq).getObject(decryptReply);
+           reply =(AuthenticationReply)localServerReference.authenticateServer(challengeReq, signature).getObject(decryptReply);
         }
         catch(NullPointerException npe){
             return null;

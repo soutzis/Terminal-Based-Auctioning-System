@@ -35,7 +35,7 @@ public interface ServerInterface extends Remote {
      * and the solution of the client's challenge
      * @throws RemoteException network exception
      */
-    SealedObject authenticateServer(SealedObject clientChallenge) throws RemoteException;
+    SealedObject authenticateServer(SealedObject clientChallenge, byte[] signature) throws RemoteException;
 
 
     Client authenticateClient(SealedObject serverChallenge) throws RemoteException;

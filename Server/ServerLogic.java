@@ -71,7 +71,7 @@ class ServerLogic extends UnicastRemoteObject implements ServerInterface {
 
     //todo catch all errors of method
     @Override
-    public synchronized SealedObject authenticateServer(SealedObject challenge) {
+    public synchronized SealedObject authenticateServer(SealedObject challenge, byte[] signature) {
         SealedObject newChallenge = null;
         try {
             Cipher cipher = Cipher.getInstance(privateKey.getAlgorithm());
@@ -94,7 +94,8 @@ class ServerLogic extends UnicastRemoteObject implements ServerInterface {
             Client client = optionalClient.orElse(null);
             if (client == null)
                 return null;
-
+            else if(!KeyGenerator.verifySignature(client.getPublicKey(),signature,request))
+                return null;
             //else if client is valid, get their public key and encrypt challenge to send
             cipher.init(Cipher.PUBLIC_KEY, client.getPublicKey());
             newChallenge = new SealedObject(reply, cipher);
@@ -122,6 +123,8 @@ class ServerLogic extends UnicastRemoteObject implements ServerInterface {
             e.printStackTrace();
         }
         catch (IllegalBlockSizeException e) {
+            e.printStackTrace();
+        } catch (SignatureException e) {
             e.printStackTrace();
         }
 

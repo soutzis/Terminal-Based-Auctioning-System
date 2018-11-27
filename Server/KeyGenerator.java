@@ -40,7 +40,7 @@ class KeyGenerator {
         return signatureData;
     }
 
-    static boolean verifySignature(PublicKey pubKey, byte[] signatureData, byte[] objToVerify)
+    static boolean verifySignature(PublicKey pubKey, byte[] signatureData, Object objToVerify)
             throws NoSuchAlgorithmException, InvalidKeyException, IOException, SignatureException {
         Signature signature = Signature.getInstance("SHA256withRSA");
         signature.initVerify(pubKey);
