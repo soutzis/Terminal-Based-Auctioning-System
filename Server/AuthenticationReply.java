@@ -1,24 +1,24 @@
 package Server;
 
 import java.io.Serializable;
-import java.security.NoSuchAlgorithmException;
-import java.util.Random;
 
 public class AuthenticationReply implements Serializable {
 
     private int solvedChallengeNumber;
     private int newChallengeNumber;
 
-    public AuthenticationReply(int solvedChallenge) throws NoSuchAlgorithmException {
+    public AuthenticationReply(int solvedChallenge, int newChallengeNumber){
         this.solvedChallengeNumber = solvedChallenge;
-        this.newChallengeNumber = new Random().nextInt();
+        this.newChallengeNumber = newChallengeNumber;
     }
 
     public int getSolvedChallengeNumber() {
+
         return solvedChallengeNumber;
     }
 
     public int getNewChallengeNumber() {
+
         return newChallengeNumber;
     }
 }

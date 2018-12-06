@@ -76,9 +76,9 @@ public class Seller extends Client {
      * @param email The email of the user. This has to be a syntactically valid email
      * @param password Te password of the user.
      */
-    private Seller(String name, String email, String password){
+    private Seller(String name, String email){
 
-        super(name, email, password);
+        super(name, email);
     }
 
     /**
@@ -88,9 +88,7 @@ public class Seller extends Client {
     @Override
     public Seller createClient(){
         Scanner scanner = new Scanner(System.in);
-        Console console = System.console();
         String name = null, email = null;
-        char[] password, verification;
         System.out.println("A new client will be registered with the server.\nPlease enter the required details.");
 
         while(!detailsValidator(name, NAME_REGEX)){
@@ -105,15 +103,8 @@ public class Seller extends Client {
             email = scanner.nextLine();
         }
 
-        do{
-            //password = console.readPassword("Enter your password: ");
-            //verification = console.readPassword("Re-enter your password: ");
-            password = "test".toCharArray();
-            verification = "test".toCharArray();
-        }while(!Arrays.equals(password,verification));
-
         //Will return this if registration was successful. If not, recursive call of method.
-        Seller seller = new Seller(name, email, new String(password));
+        Seller seller = new Seller(name, email);
 
         //If seller id is null and server is responsive, prompt to enter details again and retry to register
         if(seller.getUid()==null && seller.isServerAlive()){
@@ -125,7 +116,7 @@ public class Seller extends Client {
     }
 
     //todo check errors
-    public int initialMenu(){
+    public int sellerInitialMenu(){
         Scanner scanner = new Scanner(System.in);
         try{
             System.out.println("Please choose one of the following:");
@@ -136,7 +127,7 @@ public class Seller extends Client {
             int choice = scanner.nextInt();
             if (choice < MIN_SELLER_CHOICE || choice > MAX_SELLER_CHOICE){
                 System.out.println(MAIN_MENU_ERROR);
-                return initialMenu();
+                return sellerInitialMenu();
             }
             else
                 return choice;
@@ -147,35 +138,8 @@ public class Seller extends Client {
             if(DEBUG)
                 System.out.println(ime.getMessage());
 
-            return initialMenu();
+            return sellerInitialMenu();
         }
-    }
-
-    public String emailForAuthentication(){
-        Scanner scanner = new Scanner(System.in);
-
-        System.out.println("The private key generated when you first registered will be used.");
-        System.out.println("Please enter the email address you provided when you registered.");
-        System.out.print("Email: ");
-        String email = scanner.nextLine();
-        try{
-            //if provided email address does not conform to an email's syntax, then spin
-            if(!detailsValidator(email, EMAIL_REGEX)){
-                System.out.println("Email provided is not a valid email address");
-                return null;
-            }
-
-        }
-        //Tell the user that they did wrong.
-        catch(InputMismatchException ime){
-            System.out.println("That is not a valid input");
-            if(DEBUG)
-                System.out.println(ime.getMessage());
-
-            return emailForAuthentication();
-        }
-
-        return email;
     }
 
     /**

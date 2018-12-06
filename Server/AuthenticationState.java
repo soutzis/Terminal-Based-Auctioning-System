@@ -1,6 +1,8 @@
 package Server;
 
-class AuthenticationState {
+import java.io.Serializable;
+
+class AuthenticationState implements Serializable {
 
     private Boolean isSuccessful;
     private Integer sequenceNumber;

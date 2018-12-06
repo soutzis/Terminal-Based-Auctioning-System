@@ -8,6 +8,9 @@ import java.rmi.NotBoundException;
 import java.rmi.RemoteException;
 import java.security.*;
 import java.security.spec.InvalidKeySpecException;
+import java.util.InputMismatchException;
+import java.util.Random;
+import java.util.Scanner;
 import java.util.UUID;
 import java.util.regex.Pattern;
 
@@ -17,7 +20,7 @@ import java.util.regex.Pattern;
  */
 public abstract class Client implements Serializable {
 
-    private String uid, name, email, password;
+    private String uid, name, email;
     private boolean serverAlive = false;
     private ServerInterface serverReference;
 
@@ -29,7 +32,7 @@ public abstract class Client implements Serializable {
     public static final String REMOTE_ERROR = "\nSomething went wrong when contacting the server!";
     protected final String EMAIL_REGEX =
             "^[a-zA-Z0-9_+&*-]+(?:\\.[a-zA-Z0-9_+&*-]+)*@(?:[a-zA-Z0-9-]+\\.)+[a-zA-Z]{2,7}$";/*email validation*/
-    protected final String NAME_REGEX = "^[a-zA-Z0-9]{5,30}$";/*name validation*/
+    protected final String NAME_REGEX = "^[a-zA-Z0-9_]{5,30}$";/*name validation*/
 
     protected final boolean DEBUG = true;  /*For debugging purposes of classes that inherit from Client*/
 
@@ -51,33 +54,35 @@ public abstract class Client implements Serializable {
      * also assign a random unique ID to itself. This Constructor is used to Register a new client with the server
      * @param name The name that the Client will have
      * @param email The email of the Client.
-     * @param password The password of the Client.
      */
-    protected Client(String name, String email, String password){
+    protected Client(String name, String email){
         this.uid = UUID.randomUUID().toString();
         this.name = name;
         this.email = email;
 
 
         try {
-            KeyPair pair = KeyGenerator.generateNewKeyPair();
+            KeyPair pair = SecurityManager.generateNewKeyPair();
             publicKey = pair.getPublic();
-            KeyGenerator.writeKeyToDisk(pair.getPrivate(), "privateKey.key");
-            KeyGenerator.writeKeyToDisk(publicKey, "publicKey.pub");
+            SecurityManager.writeKeyToDisk(pair.getPrivate(), email.toLowerCase()+"_privateKey.key");
+            SecurityManager.writeKeyToDisk(publicKey, email.toLowerCase()+"_publicKey.pub");
 
             serverReference = (ServerInterface)Naming.lookup("rmi://localhost/AuctionSystem");
             ServerRegistrationReply reply = serverReference.registerClient(this);
 
-            if(reply.isSuccessful()){
+            if(reply == null){
+                System.out.println("\n>>Server appears to be down. Could not get a reply.");
+                this.serverAlive = false;
+            }
+
+            else if(reply.isSuccessful()){
                 this.serverAlive = true;
 
                 System.out.println("\nServer >>> "+reply.getMsg()+"\n>>> Server");
                 System.out.println("*Your unique ID is: "+this.uid+"*");
-
-                this.password = password;
             }
             else if(!reply.isSuccessful()){
-                System.out.println(reply.getMsg());
+                System.out.println(reply.getMsg()+"\n");
                 this.serverAlive = true;
                 this.uid = null;
             }
@@ -88,10 +93,10 @@ public abstract class Client implements Serializable {
                 nbe.printStackTrace();
             }
         }
-        catch (MalformedURLException murle) {
+        catch (MalformedURLException mue) {
             System.out.println(MALFORMED_URL_ERROR);
             if(DEBUG)
-                murle.printStackTrace();
+                mue.printStackTrace();
         }
         /*If remote exception is thrown, set the serverAlive boolean to false,
         so that the client program wont enter the main loop, since it will be futile.*/
@@ -151,14 +156,6 @@ public abstract class Client implements Serializable {
     }
 
     /**
-     * @return the client's password
-     */
-    public String getPassword(){
-
-        return password;
-    }
-
-    /**
      * @return true if client has connected to the server
      */
     public boolean isServerAlive() {
@@ -199,7 +196,33 @@ public abstract class Client implements Serializable {
         return pattern.matcher(str).matches();
     }
 
-    //todo read key from disk
+    public String emailForAuthentication(){
+        Scanner scanner = new Scanner(System.in);
+
+        System.out.println("The private key generated when you first registered will be used.");
+        System.out.println("Please enter the email address you provided when you registered.");
+        System.out.print("Email: ");
+        String email = scanner.nextLine();
+        try{
+            //if provided email address does not conform to an email's syntax, then spin
+            if(!detailsValidator(email, EMAIL_REGEX)){
+                System.out.println("Email provided is not a valid email address");
+                return null;
+            }
+
+        }
+        //Tell the user that they did wrong.
+        catch(InputMismatchException ime){
+            System.out.println("That is not a valid input");
+            if(DEBUG)
+                System.out.println(ime.getMessage());
+
+            return emailForAuthentication();
+        }
+
+        return email;
+    }
+
     public Client challengeResponseAuthentication(String email)
             throws IOException, ClassNotFoundException, NoSuchPaddingException,
             NoSuchAlgorithmException, IllegalBlockSizeException, InvalidKeyException,
@@ -214,12 +237,12 @@ public abstract class Client implements Serializable {
             e.printStackTrace();
         }
 
-        //Load private key from disk
-        PrivateKey privateKey = KeyGenerator.readPrivateKey("privateKey.key");
+        //Load private key from disk. We assume that client stores key to disk prior to logging on server
+        PrivateKey privateKey = SecurityManager.readPrivateKey(email.toLowerCase()+"_privateKey.key");
 
         //Prepare authentication request to send to server. This will verify server identity.
-        AuthenticationRequest request = new AuthenticationRequest(email);
-        byte[] signature = KeyGenerator.generateDigitalSignature(privateKey,request);
+        AuthenticationRequest request = new AuthenticationRequest(email, new Random().nextInt());
+        byte[] signature = SecurityManager.generateDigitalSignature(privateKey,request);
         PublicKey serverKey = localServerReference.getServerPubKey();
         Cipher encryptRequest = Cipher.getInstance(serverKey.getAlgorithm());
         encryptRequest.init(Cipher.PUBLIC_KEY, serverKey);
@@ -232,7 +255,8 @@ public abstract class Client implements Serializable {
         AuthenticationReply reply;
         try{
             //First send request, then decrypt server's reply. If this fails, return null and display a message
-           reply =(AuthenticationReply)localServerReference.authenticateServer(challengeReq, signature).getObject(decryptReply);
+           reply =(AuthenticationReply)localServerReference
+                   .authenticateServer(challengeReq, signature).getObject(decryptReply);
         }
         catch(NullPointerException npe){
             return null;

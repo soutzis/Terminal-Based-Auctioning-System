@@ -21,6 +21,11 @@ public class Buyer extends Client {
     public static final int MIN_BUYER_CHOICE = 1;/*minimum number of choices a seller client can take*/
     public static final int BROWSE_AUCTIONS = 1;/*if user selects this, they can choose one of their auctions to close*/
     public static final int EXIT_PROGRAM = 2; /*if the user selects this, the client will terminate*/
+    public static final int LOGIN = 1; /*if the user selects this, the client will authenticate with server*/
+    public static final int NEW_USER = 2; /*if the user selects this, new client will be created*/
+    public static final int MIN_INITIAL = 1; /*if the user selects this, new client will be created*/
+    public static final int MAX_INITIAL = 3; /*if the user selects this, new client will be created*/
+    public static final int EXIT_INITIAL = 3; /*if the user selects this, new client will be created*/
 
     /*These String constants are used for guiding the user through various steps that require their input*/
     private final String INITIAL_USER_INPUT = "\nWhat do you want to do? (Enter the number of your choice. " +
@@ -40,6 +45,8 @@ public class Buyer extends Client {
     private final String INDEX_OUT_OF_BOUNDS_ERROR = "\nYOUR INPUT IS OUT OF THE ACCEPTABLE RANGE";
     private final String INITIAL_MENU_ERROR = "\nYOUR INPUT WAS REJECTED!" +
             "\nPLEASE ENTER A *NUMERIC VALUE* IN THE RANGE OF THE VALUES "+MIN_BUYER_CHOICE+" - "+MAX_BUYER_CHOICE;
+    private final String MAIN_MENU_ERROR = "\nYOUR INPUT WAS REJECTED!" +
+            "\nPLEASE ENTER A *NUMERIC VALUE* IN THE RANGE OF THE VALUES "+MIN_BUYER_CHOICE+" - "+MAX_BUYER_CHOICE;
 
 
     /**
@@ -58,9 +65,9 @@ public class Buyer extends Client {
      * @param name The name of the user. Can be anything, even a number.
      * @param email The email of the user. This has to be a syntactically valid email
      */
-    private Buyer(String name, String email, String password){
+    private Buyer(String name, String email){
 
-        super(name, email, password);
+        super(name, email);
     }
 
     /**
@@ -70,9 +77,7 @@ public class Buyer extends Client {
     @Override
     public Buyer createClient() {
         Scanner scanner = new Scanner(System.in);
-        Console console = System.console();
         String name = null, email = null;
-        char[] password, verification;
         System.out.println("A new buyer client will be created.\nPlease enter the required details.");
 
         while(!detailsValidator(name, NAME_REGEX)){
@@ -87,15 +92,8 @@ public class Buyer extends Client {
             email = scanner.nextLine();
         }
 
-        do{
-            //password = console.readPassword("Enter your password: ");
-            //verification = console.readPassword("Re-enter your password: ");
-            password = "test".toCharArray();
-            verification = "test".toCharArray();
-        }while(!Arrays.equals(password,verification));
-
         //Will return this if registration was successful. If not, recursive call of method.
-        Buyer buyer = new Buyer(name, email, new String(password));
+        Buyer buyer = new Buyer(name, email);
 
         if(buyer.getUid()==null && buyer.isServerAlive()){
             System.out.println("Failed to register user. Client program will prompt for registration again...");
@@ -103,6 +101,33 @@ public class Buyer extends Client {
         }
         else
             return buyer;
+    }
+
+    //todo check errors
+    public int buyerInitialMenu(){
+        Scanner scanner = new Scanner(System.in);
+        try{
+            System.out.println("Please choose one of the following:");
+            System.out.println("1. Authenticate with server");
+            System.out.println("2. Create new user account");
+            System.out.println("3. Exit Program");
+            System.out.print("Choice: ");
+            int choice = scanner.nextInt();
+            if (choice < MIN_INITIAL || choice > MAX_INITIAL){
+                System.out.println(MAIN_MENU_ERROR);
+                return buyerInitialMenu();
+            }
+            else
+                return choice;
+        }
+        //Tell the user that they did wrong.
+        catch(InputMismatchException ime){
+            System.out.println(MAIN_MENU_ERROR);
+            if(DEBUG)
+                System.out.println(ime.getMessage());
+
+            return buyerInitialMenu();
+        }
     }
 
     /**

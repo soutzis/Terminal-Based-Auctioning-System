@@ -25,84 +25,98 @@ public class SellerDriver {
         int initialChoice = -1;
         int choice = -1;
 
+        //////////////AUTHENTICATION OR CREATE NEW USER//////////////
+        while(initialChoice != Seller.EXIT_PROGRAM){
+            initialChoice = seller.sellerInitialMenu();
 
-        try
-        {   //////////////AUTHENTICATION OR CREATE NEW USER//////////////
-            while(initialChoice != Seller.EXIT_PROGRAM){
-                initialChoice = seller.initialMenu();
-
-                if(initialChoice == Seller.LOGIN){
-                    //ask seller to provide email that was used for registration
-                    String email = seller.emailForAuthentication();
-                    //if email is valid, then proceed to authenticate sever and self.
-                    if(email != null) {
+            if(initialChoice == Seller.LOGIN){
+                //ask seller to provide email that was used for registration
+                String email = seller.emailForAuthentication();
+                //if email is valid, then proceed to authenticate sever and self.
+                if(email != null) {
+                    try{
                         seller = (Seller)seller.challengeResponseAuthentication(email);
-                        /*If authentication fails and server returns null,
-                        * then set seller to default constructor to provide user with choice again*/
-                        if(seller == null){
-                            System.out.println("Could not authenticate with server");
-                            seller = new Seller();
-                        }
-                        else {
-                            seller.setServerAlive(true);
-                            System.out.println("Welcome back "+seller.getName()+"!");
-                            initialChoice = Seller.EXIT_PROGRAM;
-                        }
+                    }catch (IOException ioe) {
+                        System.out.println("IOException occurred when trying to read your private key from file");
+                    } catch (ClassNotFoundException cnfe) {
+                        System.out.println("Make sure you have not deleted any class files used by the application");
+                    } catch (NoSuchPaddingException nspe) {
+                        System.out.println("There was a problem with encrypting your communication");
+                    } catch (NoSuchAlgorithmException nsae) {
+                        System.out.println("Please check if your key uses 'RSA' for encryption");
+                    } catch (IllegalBlockSizeException ibse) {
+                        System.out.println("Problem occurred while trying to read key from file.");
+                    } catch (InvalidKeyException ike) {
+                        System.out.println("The private key provided does not match your public key.");
+                    } catch (InvalidKeySpecException ikse) {
+                        System.out.println("The algorithm used for the key you provided is invalid.");
+                    } catch (SignatureException se) {
+                        System.out.println("Your signature file might be corrupted.");
+                    }
+
+                    /*If authentication fails and server returns null,
+                     * then set seller to default constructor to provide user with choice again*/
+                    if(seller == null){
+                        System.out.println("Could not authenticate with server");
+                        seller = new Seller();
+                    }
+                    else {
+                        seller.setServerAlive(true);
+                        System.out.println("\nWelcome back "+seller.getName()+"!");
+                        initialChoice = Seller.EXIT_PROGRAM;
                     }
                 }
-                else if(initialChoice == Seller.NEW_USER){
-                    seller = seller.createClient();
-                    initialChoice = Seller.EXIT_PROGRAM;
-                }
             }
+            else if(initialChoice == Seller.NEW_USER){
+                seller = seller.createClient();
+                initialChoice = Seller.EXIT_PROGRAM;
+            }
+        }
 
-            //////////////MAIN MENU PROGRAM LOOP (after authentication or registration)//////////////
-            while(choice != Seller.EXIT_PROGRAM && seller.isServerAlive()){
-                //will ask the user what they want to do when they are at the initial options-menu
-                choice = seller.takeSellerAction();
+        //////////////MAIN MENU PROGRAM LOOP (after authentication or registration)//////////////
+        while(choice != Seller.EXIT_PROGRAM && seller.isServerAlive()){
+            //will ask the user what they want to do when they are at the initial options-menu
+            choice = seller.takeSellerAction();
 
-                //if user chooses to create auction, will ask user for values and send request to server
-                if (choice == Seller.CREATE_AUCTION){
-                    String description = seller.getItemDescription();
-                    BigDecimal reservePrice = seller.getReservePrice();
-                    BigDecimal startPrice = seller.getStartingPrice(reservePrice);
-                    String auctionID = seller.getServerReference()
+            //if user chooses to create auction, will ask user for values and send request to server
+            if (choice == Seller.CREATE_AUCTION){
+                String description = seller.getItemDescription();
+                BigDecimal reservePrice = seller.getReservePrice();
+                BigDecimal startPrice = seller.getStartingPrice(reservePrice);
+                String auctionID = null;
+                try{
+                    auctionID = seller.getServerReference()
                             .initAuction(startPrice, reservePrice, description, seller);
-
-                    System.out.println("\nAuction has been successfully created. Auction ID is \""+auctionID+"\"");
                 }
-                //if user chooses to close an auction, this will list all the auctions owned by user and then user
-                //can choose one of them.
-                else if (choice == Seller.CLOSE_AUCTION){
-                    String auctionId = seller.chooseAuctionToClose();
+                catch (RemoteException r) {
+                    System.out.println(Seller.REMOTE_ERROR);
+                }
+                if(auctionID == null)
+                    System.out.println("Server could not create the requested auction");
+                else
+                    System.out.println("\nAuction has been successfully created. Auction ID is \""+auctionID+"\"");
+            }
+            //if user chooses to close an auction, this will list all the auctions owned by user and then user
+            //can choose one of them.
+            else if (choice == Seller.CLOSE_AUCTION){
+                String auctionId = seller.chooseAuctionToClose();
 
-                    //if returned id is null, go to start of loop
-                    if(auctionId != null){
-                        System.out.println("A request will be sent, to close the auction with id \""+auctionId+"\".");
-                        System.out.println(seller.getServerReference().closeAuction(auctionId, seller));
+                //if returned id is null, go to start of loop
+                if(auctionId != null){
+                    System.out.println("A request will be sent, to close the auction with id \""+auctionId+"\".");
+                    String response = null;
+                    try{
+                        response = seller.getServerReference().closeAuction(auctionId, seller);
                     }
+                    catch (RemoteException r) {
+                        System.out.println(Seller.REMOTE_ERROR);
+                    }
+                    if(response == null)
+                        System.out.println("Server could not close auction.");
+                    else
+                        System.out.println(response);
                 }
             }
         }
-        catch (RemoteException r) {
-            System.out.println(Seller.REMOTE_ERROR);
-        } catch (IOException e) {
-            e.printStackTrace();
-        } catch (NoSuchAlgorithmException e) {
-            e.printStackTrace();
-        } catch (InvalidKeyException e) {
-            e.printStackTrace();
-        } catch (NoSuchPaddingException e) {
-            e.printStackTrace();
-        } catch (ClassNotFoundException e) {
-            e.printStackTrace();
-        } catch (IllegalBlockSizeException e) {
-            e.printStackTrace();
-        } catch (InvalidKeySpecException e) {
-            e.printStackTrace();
-        } catch (SignatureException e) {
-            e.printStackTrace();
-        }
-
     }
 }

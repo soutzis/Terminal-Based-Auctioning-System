@@ -6,48 +6,32 @@ import java.math.BigDecimal;
 import java.rmi.RemoteException;
 import java.rmi.server.UnicastRemoteObject;
 import java.security.*;
+import java.security.spec.InvalidKeySpecException;
 import java.util.List;
-import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.Semaphore;
-import java.util.stream.Collectors;
+import java.util.Random;
+import java.util.UUID;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
+import org.jgroups.*;
+import org.jgroups.blocks.*;
+import org.jgroups.util.RspList;
 
 /**
  * This class is the Server's implementation (logic). The client need not know about how methods in this class work.
  * @author Petros Soutzis
  */
 class ServerLogic extends UnicastRemoteObject implements ServerInterface {
-
-    /*The server's RSA key pair*/
+    //server's public key
     private PublicKey publicKey;
-    private PrivateKey privateKey;
+    //JGroups
+    private static final String CLUSTER_NAME = "ServerCluster";
+    private static final int TIMEOUT = 5000;
+    private JChannel channel;
+    private RpcDispatcher dispatcher;
+    private RequestOptions requestOptions;
 
-    /*ConcurrentHashMap<K,V> is used, to avoid a ConcurrentModificationException to be thrown
-     if one thread tries to modify it while another is iterating over it.
-     This is the in-memory database of the server.*/
-    private ConcurrentHashMap<String, Auction> auctions = new ConcurrentHashMap<>();
-    private ConcurrentHashMap<String, Client> clients = new ConcurrentHashMap<>();
-    private ConcurrentHashMap<String, AuthenticationState> authState = new ConcurrentHashMap<>();
-
-    /*Provides atomic access to operations that check the active status of an auction.*/
-    private static Semaphore auctionIsActiveMutex = new Semaphore(1, true);
-
-    /*String constants that are used to indicate if an operation was successful or if an error was encountered.*/
-    private final String USER_REGISTERED_SUCCESS = "\nClient has been successfully registered!";
-    private final String USER_EXISTS_ERROR = "\nA user with this ID is already registered on server!";
-    private final String USER_UNREGISTERED_ERROR = "\nYou have to register with the server first!";
-    private final String AUCTION_NOT_EXISTS_ERROR = "\nThe auction with the id you provided does not exist.";
-    private final String UNAUTHORISED_ACTION_ERROR = "\nYou don't have the authority to complete this action.";
-    private final String RESERVE_NOT_REACHED_MESSAGE = "\nReserve price was not reached!";
-    private final String AUCTION_CLOSED_ACK = "\nAuction has been closed successfully.";
-    private final String AUCTION_CLOSED_ERROR = "\nUnfortunately, this auction has already been closed by the seller.";
-    private final String BID_REFUSED = "\nYour bid has been refused.";
-    private final String BID_ACCEPTED = "\nYour bid has been accepted and processed by the server.";
-    private final String INSUFFICIENT_BID_ERROR = "\nThe amount specified, is less than, or equal to the current bid.";
-    private final String EMAIL_EXISTS_ERROR = "\nThe email you have entered is already registered with another user.";
-
-    /*When 'DEBUG' is set to true, developer can view error-related messages when an exception is thrown.*/
-    private final boolean DEBUG = false;
+    private static final Logger LOGGER = Logger.getLogger( ServerLogic.class.getName() );
 
     /**
      * Package-private constructor of the server implementation.
@@ -57,135 +41,87 @@ class ServerLogic extends UnicastRemoteObject implements ServerInterface {
      */
     ServerLogic() throws  RemoteException{
         super();
-        //initialize keystore of this server
-        KeyManager keyManager = new KeyManager();
-        publicKey = keyManager.getServerKeyPair().getPublic();
-        privateKey = keyManager.getServerKeyPair().getPrivate();
+        final String PUBLIC_KEY_FNAME = "server-public-key.key";
+        //read the server's public key, so that clients can access it.
+        try {
+            this.publicKey = SecurityManager.readPublicKey(PUBLIC_KEY_FNAME);
+        }
+        catch (InvalidKeySpecException ike) {
+            System.out.println("This key is not valid. Stack contents:\n");
+            ike.printStackTrace();
+        }
+        catch (NoSuchAlgorithmException nsae) {
+            System.out.println("The algorithm used does not exist. Stack contents:\n");
+            nsae.printStackTrace();
+        }
+        catch (IOException ioe) {
+            System.out.println("IO Exception has occurred. Error message:\n"+ioe.getMessage());
+        }
+
+        //Setup the cluster that server instances will communicate in.
+        setupCluster();
     }
 
+    /**
+     * This method initializes the cluster, so that the front end can communicate with ServerReplica() type instances.
+     */
+    private void setupCluster() {
+        //JGroups communication. Building block -> RPC dispatcher to call remote methods.
+        //This architecture allows front-end to act as both a sender and receiver.
+        try {
+            this.channel = new JChannel();
+            this.requestOptions = new RequestOptions(ResponseMode.GET_ALL, TIMEOUT);
+            this.dispatcher = new RpcDispatcher(this.channel, new ServerReplica());
+            this.channel.setDiscardOwnMessages(true);
+            this.channel.connect(CLUSTER_NAME);
+        }
+        catch(Exception e) {
+            System.out.println("[SERVER] Failed to connect to cluster");
+        }
+    }
+
+    /**
+     * This method is called in every front-end server method, to ensure that if a replica in the current 'View'
+     * has crashed, a new instance is started in its place.
+     * The crashed instance address is logged with a SEVERE level.
+     * @param suspectedMembers the members that have not sent a heartbeat in logical time-frame
+     */
+    private synchronized void handleCrash(List suspectedMembers){
+        //Get View and check if member is still in view, for each suspected member.
+        //If member is still in view, then call method disconnect(), which will gracefully terminate it.
+        //If replica has crashed and is already disconnected from view, then start new instance anyway.
+        View v = this.channel.getView();
+        for (Object o : suspectedMembers){
+            Address address = (Address)o;
+            if(v.containsMember(address)){
+                try {
+                    dispatcher.callRemoteMethod(address, "disconnect",
+                            new Object[]{}, new Class[]{}, requestOptions);
+                }
+                catch (Exception e){
+                    System.out.println("Error while sending command to terminate replica instance.");
+                }
+            }
+            try{
+                //LOG FAILURE AND START NEW INSTANCE
+                new ServerReplica().start();
+                LOGGER.log(Level.SEVERE, "Server instance "+address
+                        +" was suspected and automatically terminated. Terminated instance has been replaced");
+            }
+            catch (Exception e){
+                System.out.println("Could not start new replica instance.");
+            }
+
+        }
+    }
+
+    /**
+     * @return The server's public key
+     */
     @Override
     public PublicKey getServerPubKey() {
 
-        return this.publicKey;
-    }
-
-    //todo catch all errors of method
-    @Override
-    public synchronized SealedObject authenticateServer(SealedObject challenge, byte[] signature) {
-        SealedObject newChallenge = null;
-        try {
-            Cipher cipher = Cipher.getInstance(privateKey.getAlgorithm());
-            cipher.init(Cipher.PRIVATE_KEY, privateKey);
-            //client requests that server authenticates itself. Log successful decryption
-            AuthenticationRequest request = (AuthenticationRequest)challenge.getObject(cipher);
-
-            AuthenticationState currentState = new AuthenticationState(true, 1);
-            authState.put(request.getEmail(), currentState);
-
-            //Successfully solved challenge
-            AuthenticationReply reply = new AuthenticationReply(request.getNumber());
-            //Find client reference that the user claims to be.
-            Optional<Client> optionalClient= clients
-                    .values()
-                    .stream()
-                    .filter(x -> x.getEmail().equals(request.getEmail()))
-                    .findFirst();
-            //If no matching client is found, return null and remove log.
-            Client client = optionalClient.orElse(null);
-            if (client == null)
-                return null;
-            else if(!KeyGenerator.verifySignature(client.getPublicKey(),signature,request))
-                return null;
-            //else if client is valid, get their public key and encrypt challenge to send
-            cipher.init(Cipher.PUBLIC_KEY, client.getPublicKey());
-            newChallenge = new SealedObject(reply, cipher);
-
-            //Now send solved + new challenge back to client and log transaction
-            currentState = new AuthenticationState(true, 2, reply.getNewChallengeNumber(), client);
-            authState.replace(request.getEmail(), currentState);
-        }
-        catch (NoSuchAlgorithmException e) {
-            e.printStackTrace();
-        }
-        catch (NoSuchPaddingException e) {
-            e.printStackTrace();
-        }
-        catch (InvalidKeyException e) {
-            e.printStackTrace();
-        }
-        catch (IOException e) {
-            e.printStackTrace();
-        }
-        catch (ClassNotFoundException e) {
-            e.printStackTrace();
-        }
-        catch (BadPaddingException e) {
-            e.printStackTrace();
-        }
-        catch (IllegalBlockSizeException e) {
-            e.printStackTrace();
-        } catch (SignatureException e) {
-            e.printStackTrace();
-        }
-
-        //return solved answer + new challenge
-        return newChallenge;
-    }
-
-    @Override
-    public synchronized Client authenticateClient(SealedObject solvedChallenge) {
-        AuthenticationState state = null;
-        int sequence;
-        int challengeSent;
-        boolean wasSuccess;
-        //check email and see if state sequence number is 2
-        try {
-            Cipher cipher = Cipher.getInstance(privateKey.getAlgorithm());
-            cipher.init(Cipher.PRIVATE_KEY, privateKey);
-            AuthenticationRequest solvedByClient = (AuthenticationRequest) solvedChallenge.getObject(cipher);
-            String email = solvedByClient.getEmail();
-
-            if(!authState.containsKey(email))
-                return null;
-            else {
-                state = authState.get(email);
-                sequence = state.getSequenceNumber();
-                challengeSent = state.getChallengeSent();
-                wasSuccess = state.getSuccessful();
-                authState.remove(email); //now state does not exist
-            }
-
-            if(challengeSent != solvedByClient.getNumber()){
-
-                return null;
-            }
-            else if(challengeSent == solvedByClient.getNumber() && sequence == 2){
-
-                return state.getClient();
-            }
-            else{
-
-                return null;
-            }
-        }
-        catch (NoSuchAlgorithmException e) {
-            e.printStackTrace();
-        }
-        catch (NoSuchPaddingException e) {
-            e.printStackTrace();
-        }
-        catch (InvalidKeyException e) {
-            e.printStackTrace();
-        } catch (BadPaddingException e) {
-            e.printStackTrace();
-        } catch (IllegalBlockSizeException e) {
-            e.printStackTrace();
-        } catch (IOException e) {
-            e.printStackTrace();
-        } catch (ClassNotFoundException e) {
-            e.printStackTrace();
-        }
-        return null;
+        return publicKey;
     }
 
     /**
@@ -195,27 +131,82 @@ class ServerLogic extends UnicastRemoteObject implements ServerInterface {
      */
     @Override
     public synchronized ServerRegistrationReply registerClient(Client client){
-        ServerRegistrationReply reply = new ServerRegistrationReply();
-        //check if a Client exists in the database with the same ID as the provided Client's
-        if(clients.containsKey(client.getUid())){
-            reply.setSuccess(false);
-            reply.setMsg(USER_EXISTS_ERROR);
+        try{
+            RspList responses = this.dispatcher.callRemoteMethods(null,
+                    "register",
+                    new Object[]{client},
+                    new Class[]{Client.class},
+                    this.requestOptions);
+            //If non-null replies are more than responses, handle crashed instances.
+            if(responses.getResults().size() < responses.size())
+                handleCrash(responses.getSuspectedMembers());
+
+            if(responses.getResults().size() == 0){
+                ServerRegistrationReply reply = new ServerRegistrationReply();
+                reply.setMsg("Something went wrong with the server. Please try again");
+                reply.setSuccess(false);
+            }
+            return (ServerRegistrationReply)responses.getResults().get(0);
+
         }
-        //check if a Client exists in the database with the same email as the Client parsed as parameter
-        else if(clients
-                .values()
-                .stream()
-                .anyMatch(regUser -> regUser.getEmail().toUpperCase().equals(client.getEmail().toUpperCase()))){
-            reply.setSuccess(false);
-            reply.setMsg(EMAIL_EXISTS_ERROR);
+        catch (Exception e) {
+            e.printStackTrace();
+            System.out.println("Failed to get response");
+            return null;
         }
-        //if all checks are OK, add user to "database" and return
-        else{
-            reply.setMsg(USER_REGISTERED_SUCCESS);
-            clients.put(client.getUid(), client);
-        }
-        return reply;
     }
+
+    @Override
+    public synchronized SealedObject authenticateServer(SealedObject challenge, byte[] signature) {
+        int rand = new Random().nextInt();
+        try{
+            RspList responses = this.dispatcher.callRemoteMethods(null,
+                    "authenticationStep1",
+                    new Object[]{challenge, signature, rand},
+                    new Class[]{SealedObject.class, byte[].class, int.class},
+                    this.requestOptions);
+
+            //If non-null replies are more than responses, handle crashed instances.
+            if(responses.getResults().size() < responses.size())
+                handleCrash(responses.getSuspectedMembers());
+
+            if(responses.getResults().size() == 0)
+                return null;
+
+            return (SealedObject)responses.getResults().get(0);
+        }
+        catch (Exception e) {
+            e.printStackTrace();
+            System.out.println("Failed to get response");
+            return null;
+        }
+    }
+
+    @Override
+    public synchronized Client authenticateClient(SealedObject solvedChallenge) {
+        try{
+            RspList responses = this.dispatcher.callRemoteMethods(null,
+                    "authenticationStep2",
+                    new Object[]{solvedChallenge},
+                    new Class[]{SealedObject.class},
+                    this.requestOptions);
+
+            //If non-null replies are more than responses, handle crashed instances.
+            if(responses.getResults().size() < responses.size())
+                handleCrash(responses.getSuspectedMembers());
+
+            if(responses.getResults().size() == 0)
+                return null;
+
+            return (Client)responses.getResults().get(0);
+        }
+        catch (Exception e) {
+            e.printStackTrace();
+            System.out.println("Failed to get response");
+            return null;
+        }
+    }
+
 
     /**
      * This will create an auction and store it in the HashMap containing al the server's auctions.
@@ -228,11 +219,27 @@ class ServerLogic extends UnicastRemoteObject implements ServerInterface {
     @Override
     public synchronized String initAuction(BigDecimal startPrice, BigDecimal minPriceAccepted,
                               String description, Client seller) {
+        String auctionId = UUID.randomUUID().toString();
+        try{
+            RspList responses = this.dispatcher.callRemoteMethods(null,
+                    "startAuction",
+                    new Object[]{auctionId, startPrice,minPriceAccepted,description,seller},
+                    new Class[]{String.class, BigDecimal.class, BigDecimal.class, String.class, Client.class},
+                    this.requestOptions);
 
-        Auction auction = new Auction(seller.getUid(), startPrice, minPriceAccepted, description);
-        auctions.put(auction.getAuctionId(), auction);
+            if(responses.getResults().size() < responses.size())
+                handleCrash(responses.getSuspectedMembers());
 
-        return auction.getAuctionId();
+            if(responses.getResults().size() == 0)
+                return null;
+
+            return (String)responses.getResults().get(0);
+        }
+        catch (Exception e) {
+            e.printStackTrace();
+            System.out.println("Failed to get response");
+            return null;
+        }
     }
 
     /**
@@ -247,47 +254,25 @@ class ServerLogic extends UnicastRemoteObject implements ServerInterface {
      */
     @Override
     public synchronized String closeAuction(String auctionID, Client seller){
-        final String sellerID = seller.getUid();
-        //check if client exists on server
-        if(!clients.containsKey(sellerID))
-            return USER_UNREGISTERED_ERROR;
-        //check if auction id exists on server
-        else if(!auctions.containsKey(auctionID))
-            return AUCTION_NOT_EXISTS_ERROR;
-        //check if seller has the authority to close auction
-        else if(!sellerID.equals(auctions.get(auctionID).getSellerId()))
-            return UNAUTHORISED_ACTION_ERROR;
-        //check if auction was already closed
-        else if(!auctions.get(auctionID).isActive())
-            return AUCTION_CLOSED_ERROR;
-
-        /*Critical section if closeAuction() + bid() at the same time.
-          If closeAuction was first, auction will close and bidder will get an error message,
-          otherwise, bid will be placed and then auction will close as soon as it is allowed to enter
-          critical section*/
         try{
-            auctionIsActiveMutex.acquire();
-            auctions.get(auctionID).setActive(false);
-            auctionIsActiveMutex.release();
-        }
-        catch (InterruptedException ie){
-            if(DEBUG){
-                ie.printStackTrace();
-            }
-        }
-        //Check if reserve was reached
-        if(!auctions.get(auctionID).isReserveReached())
-            return AUCTION_CLOSED_ACK+RESERVE_NOT_REACHED_MESSAGE;
-        //If reserve was reached, read the winner id and find them from the clients map
-        else{
-            String winnerId = auctions.get(auctionID).getCurrentWinnerId();
-            Client winner = clients.get(winnerId);
+            RspList responses = this.dispatcher.callRemoteMethods(null,
+                    "stopAuction",
+                    new Object[]{auctionID,seller},
+                    new Class[]{String.class, Client.class},
+                    this.requestOptions);
 
-            return AUCTION_CLOSED_ACK+"\n\nThe winner is the buyer with:" +
-                    "\nID = "+winnerId+
-                    "\nNAME = "+winner.getName()+
-                    "\nEMAIL = "+winner.getEmail()+
-                    "\nSOLD FOR £"+auctions.get(auctionID).getCurrentBid()+"!";
+            if(responses.getResults().size() < responses.size())
+                handleCrash(responses.getSuspectedMembers());
+
+            if(responses.getResults().size() == 0)
+                return null;
+
+            return (String)responses.getResults().get(0);
+        }
+        catch (Exception e) {
+            e.printStackTrace();
+            System.out.println("Failed to get response");
+            return null;
         }
     }
 
@@ -300,51 +285,27 @@ class ServerLogic extends UnicastRemoteObject implements ServerInterface {
      */
     @Override
     public synchronized String bid(String auctionId, BigDecimal bidAmount, Client buyer){
-        String buyerID = buyer.getUid();
-
-        /*Critical section if closeAuction() + bid() at the same time.
-          If closeAuction was first, auction will close and bidder will get an error message,
-          otherwise, bid will be placed and then auction will close as soon as it is allowed to enter
-          critical section*/
         try{
-            auctionIsActiveMutex.acquire();
-            boolean auctionIsActive = auctions.get(auctionId).isActive();
-            auctionIsActiveMutex.release();
+            RspList responses = this.dispatcher.callRemoteMethods(
+                    null,
+                    "bid",
+                    new Object[]{auctionId,bidAmount,buyer},
+                    new Class[]{String.class, BigDecimal.class, Client.class},
+                    this.requestOptions);
 
-            if(!auctionIsActive)
-                return BID_REFUSED+AUCTION_CLOSED_ERROR;
+            if(responses.getResults().size() < responses.size())
+                handleCrash(responses.getSuspectedMembers());
+
+            if(responses.getResults().size() == 0)
+                return null;
+
+            return (String)responses.getResults().get(0);
         }
-        catch (InterruptedException ie){
-            if(DEBUG)
-                ie.printStackTrace();
+        catch (Exception e) {
+            e.printStackTrace();
+            System.out.println("Failed to get response");
+            return null;
         }
-
-        //is user registered on server
-        if(!clients.containsKey(buyerID))
-            return BID_REFUSED+USER_UNREGISTERED_ERROR;
-        //does auction id exist on server
-        else if(!auctions.containsKey(auctionId))
-            return BID_REFUSED+AUCTION_NOT_EXISTS_ERROR;
-
-        //Get current bid and reserve price of the auction
-        BigDecimal cBid = auctions.get(auctionId).getCurrentBid();
-        BigDecimal reservePrice = auctions.get(auctionId).getReservePrice();
-
-        //if bidAmount is less than, or equal to currentBid, then refuse bid
-        if(bidAmount.compareTo(cBid) < 1)
-            return BID_REFUSED+INSUFFICIENT_BID_ERROR;
-
-        else if(bidAmount.compareTo(cBid) > 0){
-            //bid is greater than auction's current bid
-            auctions.get(auctionId).setCurrentBid(bidAmount);
-            if(bidAmount.compareTo(reservePrice) >= 0){
-                //if reserve price has been reached, set the winner of this auction
-                auctions.get(auctionId).setReserveReached(true);
-                auctions.get(auctionId).setCurrentWinner(buyerID);
-                return BID_ACCEPTED;
-            }
-        }
-        return null;
     }
 
     /**
@@ -352,11 +313,31 @@ class ServerLogic extends UnicastRemoteObject implements ServerInterface {
      */
     @Override
     public List<Auction> browseActiveAuctions() {
-        return auctions
-                .values()
-                .stream()
-                .filter(Auction::isActive)
-                .collect(Collectors.toList());
+        try{
+            RspList responses = this.dispatcher.callRemoteMethods(
+                    null,
+                    "browseActiveAuctions",
+                    new Object[]{},
+                    new Class[]{},
+                    this.requestOptions);
+
+            if(responses.getResults().size() < responses.size())
+                handleCrash(responses.getSuspectedMembers());
+
+            if(responses.getResults().size() == 0)
+                return null;
+
+            @SuppressWarnings("unchecked")
+            List<Auction> reply = (List<Auction>) responses.getFirst();
+
+            return reply;
+        }
+
+        catch (Exception e) {
+            e.printStackTrace();
+            System.out.println("Failed to get response");
+            return null;
+        }
     }
 
     /**
@@ -365,29 +346,30 @@ class ServerLogic extends UnicastRemoteObject implements ServerInterface {
      */
     @Override
     public List<Auction> browseAuctionsOfSeller(String sellerId) {
-        //if id does not exist on server, return null
-        if(!clients.containsKey(sellerId))
+        try{
+            RspList responses = this.dispatcher.callRemoteMethods(
+                    null,
+                    "browseAuctionsOfSeller",
+                    new Object[]{sellerId},
+                    new Class[]{String.class},
+                    this.requestOptions);
+
+            if(responses.getResults().size() < responses.size())
+                handleCrash(responses.getSuspectedMembers());
+
+            if(responses.getResults().size() == 0)
+                return null;
+
+            @SuppressWarnings("unchecked")
+            List<Auction> reply = (List<Auction>) responses.getFirst();
+
+            return reply;
+        }
+        catch (Exception e) {
+            e.printStackTrace();
+            System.out.println("Failed to get response");
             return null;
-        else
-            return auctions
-                    .values()
-                    .stream()
-                    .filter(Auction::isActive)
-                    .filter(auction -> auction.getSellerId().equals(sellerId))
-                    .collect(Collectors.toList());
+        }
     }
-
-    /*
-    //This method is for scalability of program.
-    //Might be useful to be able to see closed auctions for both buyers and sellers
-    public List<Auction> browseFinishedAuctions() {
-        List<Auction> activeAuctions = new ArrayList<>();
-        auctions.values().forEach(item -> {
-            if (!item.isActive()) {
-                activeAuctions.add(item);
-            }});
-
-        return activeAuctions;
-    }*/
 
 }

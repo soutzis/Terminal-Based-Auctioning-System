@@ -1,21 +1,14 @@
 package Server;
 
 import java.io.Serializable;
-import java.util.Random;
 
 public class AuthenticationRequest implements Serializable {
     private String email;
     private int number;
 
-    public AuthenticationRequest(String email){
+    public AuthenticationRequest(String email, int random){
 
-        number = new Random().nextInt();
-        this.email = email;
-    }
-
-    public AuthenticationRequest(String email, int num){
-
-        this.number = num;
+        number = random;
         this.email = email;
     }
 

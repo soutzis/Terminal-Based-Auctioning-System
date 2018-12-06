@@ -2,7 +2,6 @@ package Server;
 
 import java.io.Serializable;
 import java.math.BigDecimal;
-import java.util.UUID;
 
 /**
  * This class is a POJO that represents an Auction.
@@ -23,10 +22,10 @@ public class Auction implements Serializable {
      * @param minPriceAccepted The reserve price of the auction
      * @param description The description of the item for sale
      */
-    public Auction(String sellerId, BigDecimal startPrice,
+    public Auction(String auctionId, String sellerId, BigDecimal startPrice,
             BigDecimal minPriceAccepted, String description){
 
-        this.auctionId = UUID.randomUUID().toString();
+        this.auctionId = auctionId;
         this.currentWinnerId = null;
         this.sellerId = sellerId;
         this.reservePrice = minPriceAccepted;
